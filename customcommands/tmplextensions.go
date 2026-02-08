@@ -182,7 +182,7 @@ func tmplRunCC(ctx *templates.Context) interface{} {
 			return "", nil
 		}
 
-		if ctx.IncreaseCheckCallCounterPremium("runcc", 1, 10) {
+		if ctx.IncreaseCheckCallCounterPremium("runcc", 100, 1000) {
 			return "", templates.ErrTooManyCalls
 		}
 
@@ -288,7 +288,7 @@ func tmplRunCC(ctx *templates.Context) interface{} {
 // then when you use the custom mute command again it will overwrite the mute duration and overwrite the scheduled unmute cc for that user
 func tmplScheduleUniqueCC(ctx *templates.Context) interface{} {
 	return func(ccID int, channel interface{}, delaySeconds interface{}, key interface{}, data interface{}) (string, error) {
-		if ctx.IncreaseCheckCallCounterPremium("runcc", 1, 10) {
+		if ctx.IncreaseCheckCallCounterPremium("runcc", 100, 1000) {
 			return "", templates.ErrTooManyCalls
 		}
 
@@ -374,7 +374,7 @@ func tmplScheduleUniqueCC(ctx *templates.Context) interface{} {
 // tmplCancelUniqueCC cancels a scheduled cc execution in the future with the provided cc id and key
 func tmplCancelUniqueCC(ctx *templates.Context) interface{} {
 	return func(ccID int, key interface{}) (string, error) {
-		if ctx.IncreaseCheckCallCounter("cancelcc", 10) {
+		if ctx.IncreaseCheckCallCounter("cancelcc", 1000) {
 			return "", templates.ErrTooManyCalls
 		}
 
@@ -406,7 +406,7 @@ func tmplDBSet(ctx *templates.Context) interface{} {
 
 func tmplDBSetExpire(ctx *templates.Context) func(userID int64, key interface{}, value interface{}, ttl int) (string, error) {
 	return func(userID int64, key interface{}, value interface{}, ttl int) (string, error) {
-		if ctx.IncreaseCheckCallCounterPremium("db_interactions", 10, 50) {
+		if ctx.IncreaseCheckCallCounterPremium("db_interactions", 1000, 5000) {
 			return "", templates.ErrTooManyCalls
 		}
 
@@ -450,7 +450,7 @@ func tmplDBSetExpire(ctx *templates.Context) func(userID int64, key interface{},
 
 func tmplDBIncr(ctx *templates.Context) interface{} {
 	return func(userID int64, key interface{}, incrBy interface{}) (interface{}, error) {
-		if ctx.IncreaseCheckCallCounterPremium("db_interactions", 10, 50) {
+		if ctx.IncreaseCheckCallCounterPremium("db_interactions", 1000, 5000) {
 			return "", templates.ErrTooManyCalls
 		}
 
@@ -503,7 +503,7 @@ RETURNING value_num`
 
 func tmplDBGet(ctx *templates.Context) interface{} {
 	return func(userID int64, key interface{}) (interface{}, error) {
-		if ctx.IncreaseCheckCallCounterPremium("db_interactions", 10, 50) {
+		if ctx.IncreaseCheckCallCounterPremium("db_interactions", 1000, 5000) {
 			return "", templates.ErrTooManyCalls
 		}
 
@@ -528,11 +528,11 @@ func tmplDBGetPattern(ctx *templates.Context, inverse bool) interface{} {
 	}
 
 	return func(userID int64, pattern interface{}, iAmount interface{}, iSkip interface{}) (interface{}, error) {
-		if ctx.IncreaseCheckCallCounterPremium("db_interactions", 10, 50) {
+		if ctx.IncreaseCheckCallCounterPremium("db_interactions", 1000, 5000) {
 			return "", templates.ErrTooManyCalls
 		}
 
-		if ctx.IncreaseCheckCallCounterPremium("db_multiple", 2, 10) {
+		if ctx.IncreaseCheckCallCounterPremium("db_multiple", 200, 1000) {
 			return "", templates.ErrTooManyCalls
 		}
 
@@ -558,7 +558,7 @@ func tmplDBGetPattern(ctx *templates.Context, inverse bool) interface{} {
 
 func tmplDBDel(ctx *templates.Context) interface{} {
 	return func(userID int64, key interface{}) (interface{}, error) {
-		if ctx.IncreaseCheckCallCounterPremium("db_interactions", 10, 50) {
+		if ctx.IncreaseCheckCallCounterPremium("db_interactions", 1000, 5000) {
 			return "", templates.ErrTooManyCalls
 		}
 
@@ -573,7 +573,7 @@ func tmplDBDel(ctx *templates.Context) interface{} {
 
 func tmplDBDelById(ctx *templates.Context) interface{} {
 	return func(userID int64, id int64) (interface{}, error) {
-		if ctx.IncreaseCheckCallCounterPremium("db_interactions", 10, 50) {
+		if ctx.IncreaseCheckCallCounterPremium("db_interactions", 1000, 5000) {
 			return "", templates.ErrTooManyCalls
 		}
 
@@ -586,11 +586,11 @@ func tmplDBDelById(ctx *templates.Context) interface{} {
 }
 func tmplDBDelMultiple(ctx *templates.Context) interface{} {
 	return func(query interface{}, iAmount interface{}, iSkip interface{}) (interface{}, error) {
-		if ctx.IncreaseCheckCallCounterPremium("db_interactions", 10, 50) {
+		if ctx.IncreaseCheckCallCounterPremium("db_interactions", 1000, 5000) {
 			return "", templates.ErrTooManyCalls
 		}
 
-		if ctx.IncreaseCheckCallCounterPremium("db_multiple", 2, 10) {
+		if ctx.IncreaseCheckCallCounterPremium("db_multiple", 200, 1000) {
 			return "", templates.ErrTooManyCalls
 		}
 
@@ -635,11 +635,11 @@ func tmplDBDelMultiple(ctx *templates.Context) interface{} {
 
 func tmplDBRank(ctx *templates.Context) interface{} {
 	return func(query interface{}, userID int64, key string) (interface{}, error) {
-		if ctx.IncreaseCheckCallCounterPremium("db_interactions", 10, 50) {
+		if ctx.IncreaseCheckCallCounterPremium("db_interactions", 1000, 5000) {
 			return "", templates.ErrTooManyCalls
 		}
 
-		if ctx.IncreaseCheckCallCounterPremium("db_multiple", 2, 10) {
+		if ctx.IncreaseCheckCallCounterPremium("db_multiple", 200, 1000) {
 			return "", templates.ErrTooManyCalls
 		}
 
@@ -684,11 +684,11 @@ WHERE user_id = $5 AND key = $6`
 
 func tmplDBCount(ctx *templates.Context) interface{} {
 	return func(variadicArg ...interface{}) (interface{}, error) {
-		if ctx.IncreaseCheckCallCounterPremium("db_interactions", 10, 50) {
+		if ctx.IncreaseCheckCallCounterPremium("db_interactions", 1000, 5000) {
 			return "", templates.ErrTooManyCalls
 		}
 
-		if ctx.IncreaseCheckCallCounterPremium("db_multiple", 2, 10) {
+		if ctx.IncreaseCheckCallCounterPremium("db_multiple", 200, 1000) {
 			return "", templates.ErrTooManyCalls
 		}
 
@@ -773,11 +773,11 @@ func tmplDBTopEntries(ctx *templates.Context, bottom bool) interface{} {
 	}
 
 	return func(pattern interface{}, iAmount interface{}, iSkip interface{}) (interface{}, error) {
-		if ctx.IncreaseCheckCallCounterPremium("db_interactions", 10, 50) {
+		if ctx.IncreaseCheckCallCounterPremium("db_interactions", 1000, 5000) {
 			return "", templates.ErrTooManyCalls
 		}
 
-		if ctx.IncreaseCheckCallCounterPremium("db_multiple", 2, 10) {
+		if ctx.IncreaseCheckCallCounterPremium("db_multiple", 200, 1000) {
 			return "", templates.ErrTooManyCalls
 		}
 

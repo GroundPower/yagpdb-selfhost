@@ -165,8 +165,8 @@ type CustomCommand struct {
 	Channels        []int64 `json:"channels" schema:"channels"`
 
 	// If set, then one of the following channels are required, otherwise they are ignored
-	RequireRoles  bool    `json:"require_roles" schema:"require_roles"`
-	Roles         []int64 `json:"roles" schema:"roles"`
+	RequireRoles bool    `json:"require_roles" schema:"require_roles"`
+	Roles        []int64 `json:"roles" schema:"roles"`
 	TriggerOnEdit bool    `json:"trigger_on_edit" schema:"trigger_on_edit"`
 
 	GroupID int64
@@ -377,14 +377,14 @@ func (c CustomCommandSlice) Swap(i, j int) {
 }
 
 const (
-	MaxCommands                   = 100
-	MaxCommandsPremium            = 250
-	MaxRoleTriggerCommands        = 1
-	MaxRoleTriggerCommandsPremium = 5
-	MaxCCResponsesLength          = 10000
-	MaxCCResponsesLengthPremium   = 20000
-	MaxUserMessages               = 20
-	MaxGroups                     = 50
+	MaxCommands                   = 1000
+	MaxCommandsPremium            = 2500
+	MaxRoleTriggerCommands        = 100
+	MaxRoleTriggerCommandsPremium = 500
+	MaxCCResponsesLength          = 100000
+	MaxCCResponsesLengthPremium   = 200000
+	MaxUserMessages               = 200
+	MaxGroups                     = 500
 )
 
 func MaxCommandsForContext(ctx context.Context) int {

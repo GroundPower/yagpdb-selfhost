@@ -1,25 +1,14 @@
-volumes:
-  db:
-  redis:
-  cert_cache:
-  soundboard:
-
-networks:
-  default:
+version: '3'
 
 services:
   app:
     build:
-      # We change context so that we can copy the local repo in during
-      # development
       context: ../
       dockerfile: yagpdb_docker/Dockerfile
     restart: unless-stopped
     command:
-      # - "/app/yagpdb"
       - "-all"
-      - "-pa"
-      - "-exthttps=false"
+      - "-exthttps=true"
       - "-https=false"
     depends_on:
       - redis
@@ -27,31 +16,33 @@ services:
     networks:
       - default
     volumes:
-      - cert_cache:/app/cert
-      - soundboard:/app/soundboard
-      - .:/app/source
+      - ./cert_cache:/app/cert        # <-- Yerel klasöre bağlandı
+      - ./soundboard:/app/soundboard  # <-- Yerel klasöre bağlandı
     ports:
-      - '80:80'
-      - '443:443'
+      - '5000:5000'
     env_file:
       - app.env
 
   redis:
-    image: docker.io/redis
+    image: redis
     restart: unless-stopped
     networks:
       - default
     volumes:
-      - redis:/data
+      - ./redis:/data                 # <-- Yerel klasöre bağlandı
 
   db:
-    image: docker.io/postgres:11
+    image: postgres:11
     restart: unless-stopped
     volumes:
-      - db:/var/lib/postgresql/data
+      - ./db:/var/lib/postgresql/data # <-- Yerel klasöre bağlandı
     networks:
-     - default
-    ports:
-      - 5432:5432
+      - default
     env_file:
       - db.env
+    ports:
+      - '5432:5432'
+
+networks:
+  default:
+    driver: bridge
