@@ -767,6 +767,11 @@ func baseContextFuncs(c *Context) {
 	// Member functions
 	c.addContextFunc("getMember", c.tmplGetMember)
 	c.addContextFunc("getMemberVoiceState", c.tmplGetMemberVoiceState)
+	c.addContextFunc("moveMember", c.tmplMoveMember)
+	c.addContextFunc("muteMember", c.tmplMuteMember)
+	c.addContextFunc("unmuteMember", c.tmplUnmuteMember)
+	c.addContextFunc("deafenMember", c.tmplDeafenMember)
+	c.addContextFunc("undeafenMember", c.tmplUndeafenMember)
 	c.addContextFunc("editNickname", c.tmplEditNickname)
 	c.addContextFunc("getGuildMembers", c.tmplGetGuildMembers)
 
@@ -807,6 +812,10 @@ func baseContextFuncs(c *Context) {
 	c.addContextFunc("hash", c.tmplSha256)
 	c.addContextFunc("decodeBase64", c.tmplDecodeBase64)
 	c.addContextFunc("encodeBase64", c.tmplEncodeBase64)
+
+	// HTTP fetch (self-host eklemesi, bkz. context_funcs_http.go)
+	c.addContextFunc("httpGet", c.tmplHTTPGet)
+	c.addContextFunc("httpGetJSON", c.tmplHTTPGetJSON)
 }
 
 type limitedWriter struct {

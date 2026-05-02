@@ -933,6 +933,42 @@ func (s *Session) GuildMemberMove(guildID, userID, channelID int64) (err error) 
 	return
 }
 
+// GuildMemberMute server-mutes or unmutes a guild member in voice channels.
+//
+//	guildID : The ID of a Guild.
+//	userID  : The ID of a User.
+//	mute    : Whether the user should be server-muted.
+//
+// The target member must be connected to a voice channel; Discord returns
+// an error otherwise.
+func (s *Session) GuildMemberMute(guildID, userID int64, mute bool) (err error) {
+
+	data := struct {
+		Mute bool `json:"mute"`
+	}{mute}
+
+	_, err = s.RequestWithBucketID("PATCH", EndpointGuildMember(guildID, userID), data, nil, EndpointGuildMember(guildID, 0))
+	return
+}
+
+// GuildMemberDeafen server-deafens or undeafens a guild member in voice channels.
+//
+//	guildID : The ID of a Guild.
+//	userID  : The ID of a User.
+//	deaf    : Whether the user should be server-deafened.
+//
+// The target member must be connected to a voice channel; Discord returns
+// an error otherwise.
+func (s *Session) GuildMemberDeafen(guildID, userID int64, deaf bool) (err error) {
+
+	data := struct {
+		Deaf bool `json:"deaf"`
+	}{deaf}
+
+	_, err = s.RequestWithBucketID("PATCH", EndpointGuildMember(guildID, userID), data, nil, EndpointGuildMember(guildID, 0))
+	return
+}
+
 // GuildMemberNickname updates the nickname of a guild member
 // guildID   : The ID of a guild
 // userID    : The ID of a user or "@me" which is a shortcut of the current user ID

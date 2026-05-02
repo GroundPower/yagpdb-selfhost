@@ -805,4 +805,67 @@ func parseExecError(err template.ExecError) *execErrorData {
 	return &execErrorData{ccid, line, row, parts[4]}
 }
 
-func onExecPanic(cmd *models.CustomCommand, err error, tmplCtx *templates.Context, logStack bool
+func onExecPanic(cmd *models.CustomCommand, err error, tmplCtx *templates.Context, logStack bool) {
+	l := logger.WithField("guild", tmplCtx.GS.ID).WithError(err)
+	if logStack {
+		stack := string(debug.Stack())
+		l = l.WithField("stack", stack)
+	}
+
+	l.Error("Error executing custom command")
+
+	errChannel := tmplCtx.CurrentFrame.CS.ID
+	if cmd.RedirectErrorsChannel != 0 {
+		errChannel = cmd.RedirectErrorsChannel
+	} else if cmd.R.Group != nil && cmd.R.Group.RedirectErrorsChannel != 0 {
+		errChannel = cmd.R.Group.RedirectErrorsChannel
+	}
+
+	if cmd.ShowErrors {
+		out := "\nAn error caused the execution of the custom command template to stop:\n"
+		out += "`" + err.Error() + "`"
+
+		common.BotSession.ChannelMessageSend(errChannel, out)
+	}
+
+	updatePostCommandRan(cmd, err)
+}
+
+func updatePostCommandRan(cmd *models.CustomCommand, runErr error) {
+	const qNoErr = "UPDATE custom_commands SET run_count = run_count + 1, last_run=now() WHERE guild_id=$1 AND local_id=$2"
+	const qErr = "UPDATE custom_commands SET run_count = run_count + 1, last_run=now(), last_error=$3, last_error_time=now() WHERE guild_id=$1 AND local_id=$2"
+
+	var err error
+	if runErr == nil {
+		_, err = common.PQ.Exec(qNoErr, cmd.GuildID, cmd.LocalID)
+	} else {
+		_, err = common.PQ.Exec(qErr, cmd.GuildID, cmd.LocalID, runErr.Error())
+	}
+
+	if err != nil {
+		logger.WithError(err).WithField("guild", cmd.GuildID).Error("failed running post command executed query")
+	}
+}
+
+var cmdFixCommands = &commands.YAGCommand{
+	CmdCategory:          commands.CategoryTool,
+	Name:                 "fixscheduledccs",
+	Description:          "Corrects the next run time of interval CCs globally, fixes issues arising from missed executions due to downtime. Bot Owner Only",
+	HideFromCommandsPage: true,
+	HideFromHelp:         true,
+	RunFunc: util.RequireOwner(func(data *dcmd.Data) (interface{}, error) {
+		ccs, err := models.CustomCommands(qm.Where("trigger_type = 5"), qm.Where("now() - INTERVAL '1 hour' > next_run"), qm.Where("disabled = false")).AllG(context.Background())
+		if err != nil {
+			return nil, err
+		}
+
+		for _, v := range ccs {
+			err = UpdateCommandNextRunTime(v, false, false)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		return fmt.Sprintf("Doneso! fixed %d commands!", len(ccs)), nil
+	}),
+}

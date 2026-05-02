@@ -1072,6 +1072,81 @@ func (c *Context) tmplGetMemberVoiceState(target interface{}) (*discordgo.VoiceS
 	return vs, nil
 }
 
+func (c *Context) tmplMoveMember(target, channel interface{}) (string, error) {
+	if c.IncreaseCheckGenericAPICall() {
+		return "", ErrTooManyAPICalls
+	}
+
+	if c.IncreaseCheckCallCounter("voice_mod", 50) {
+		return "", ErrTooManyCalls
+	}
+
+	mID := TargetUserID(target)
+	if mID == 0 {
+		return "", nil
+	}
+
+	var cID int64
+	if channel != nil {
+		cID = c.ChannelArg(channel)
+		if cID == 0 {
+			return "", nil
+		}
+	}
+
+	return "", common.BotSession.GuildMemberMove(c.GS.ID, mID, cID)
+}
+
+func (c *Context) setMemberVoiceMute(target interface{}, mute bool) (string, error) {
+	if c.IncreaseCheckGenericAPICall() {
+		return "", ErrTooManyAPICalls
+	}
+
+	if c.IncreaseCheckCallCounter("voice_mod", 50) {
+		return "", ErrTooManyCalls
+	}
+
+	mID := TargetUserID(target)
+	if mID == 0 {
+		return "", nil
+	}
+
+	return "", common.BotSession.GuildMemberMute(c.GS.ID, mID, mute)
+}
+
+func (c *Context) tmplMuteMember(target interface{}) (string, error) {
+	return c.setMemberVoiceMute(target, true)
+}
+
+func (c *Context) tmplUnmuteMember(target interface{}) (string, error) {
+	return c.setMemberVoiceMute(target, false)
+}
+
+func (c *Context) setMemberVoiceDeafen(target interface{}, deaf bool) (string, error) {
+	if c.IncreaseCheckGenericAPICall() {
+		return "", ErrTooManyAPICalls
+	}
+
+	if c.IncreaseCheckCallCounter("voice_mod", 50) {
+		return "", ErrTooManyCalls
+	}
+
+	mID := TargetUserID(target)
+	if mID == 0 {
+		return "", nil
+	}
+
+	return "", common.BotSession.GuildMemberDeafen(c.GS.ID, mID, deaf)
+}
+
+func (c *Context) tmplDeafenMember(target interface{}) (string, error) {
+	return c.setMemberVoiceDeafen(target, true)
+}
+
+func (c *Context) tmplUndeafenMember(target interface{}) (string, error) {
+	return c.setMemberVoiceDeafen(target, false)
+}
+
 func (c *Context) tmplGetChannel(channel interface{}) (*CtxChannel, error) {
 	if c.IncreaseCheckGenericAPICall() {
 		return nil, ErrTooManyAPICalls
