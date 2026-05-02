@@ -24,8 +24,9 @@ services:
       - app.env
 
   redis:
-    image: redis
+    image: redis:7-alpine
     restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
     networks:
       - default
     volumes:

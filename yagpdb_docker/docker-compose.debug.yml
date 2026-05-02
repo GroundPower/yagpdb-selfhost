@@ -38,6 +38,7 @@ services:
   redis:
     image: docker.io/redis
     restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
     networks:
       - default
     volumes:
