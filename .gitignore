@@ -26,3 +26,14 @@ __debug_bin*
 app.env
 .scannerwork
 google-creds.json
+
+# Self-host: docker runtime data (DB / Redis state, cert cache, soundboard, logs)
+yagpdb_docker/db/
+yagpdb_docker/redis/
+yagpdb_docker/cert_cache/
+yagpdb_docker/soundboard/
+yagpdb_docker/app_log.txt
+yagpdb_docker/db.env
+
+# Claude Code session data
+.claude/
