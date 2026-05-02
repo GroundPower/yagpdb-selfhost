@@ -3,25 +3,23 @@ package templates
 // HTTP fetch fonksiyonları — self-host eklemesidir, upstream YAGPDB'de yoktur.
 // `httpGet` ve `httpGetJSON` template fonksiyonlarını sağlar.
 //
-// Güvenlik:
-//   - Allowlist (env: YAGPDB_HTTP_FETCH_HOSTS, virgülle ayrılmış host listesi).
-//     Boşsa hiçbir host'a izin verilmez (deny by default).
-//   - SSRF koruması: hostname DNS ile resolve edilir, private/loopback/link-local
-//     IP aralıkları reddedilir (Docker iç network'üne erişim engellenir).
+// Erişim & güvenlik:
+//   - Sadece premium guild'lerde kullanılabilir (c.IsPremium). Self-host'ta hangi
+//     guild'in premium olduğuna sen karar veriyorsun (bot owner dashboard'unda flag).
+//   - SSRF koruması: hostname DNS ile resolve edilir, private/loopback/CGNAT/
+//     link-local IP aralıkları reddedilir (Docker iç network'üne erişim engellenir).
 //   - http/https dışı şemalar reddedilir.
 //   - 5 saniye timeout, 1 MB body limit, CC başına 10 çağrı limit.
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
-	"os"
-	"strings"
-	"sync"
 	"syscall"
 	"time"
 )
@@ -33,50 +31,21 @@ const (
 	httpFetchUserAgent    = "YAGPDB-selfhost/1.0 (httpGet template fn)"
 )
 
-var (
-	httpFetchAllowlistOnce sync.Once
-	httpFetchAllowlistMap  map[string]struct{}
+var ErrHTTPFetchNotPremium = errors.New("httpGet: bu guild premium değil — self-host dashboard'undan premium işaretle")
 
-	httpFetchClient = &http.Client{
-		Timeout: httpFetchTimeout,
-		Transport: &http.Transport{
-			DialContext: (&net.Dialer{
-				Timeout:   httpFetchTimeout,
-				KeepAlive: 30 * time.Second,
-				Control:   ssrfDialControl,
-			}).DialContext,
-			MaxIdleConns:          10,
-			IdleConnTimeout:       30 * time.Second,
-			TLSHandshakeTimeout:   httpFetchTimeout,
-			ResponseHeaderTimeout: httpFetchTimeout,
-		},
-	}
-)
-
-// loadHTTPAllowlist YAGPDB_HTTP_FETCH_HOSTS env'inden host setini bir kere yükler.
-func loadHTTPAllowlist() map[string]struct{} {
-	httpFetchAllowlistOnce.Do(func() {
-		httpFetchAllowlistMap = map[string]struct{}{}
-		raw := os.Getenv("YAGPDB_HTTP_FETCH_HOSTS")
-		for _, h := range strings.Split(raw, ",") {
-			h = strings.TrimSpace(strings.ToLower(h))
-			if h != "" {
-				httpFetchAllowlistMap[h] = struct{}{}
-			}
-		}
-	})
-	return httpFetchAllowlistMap
-}
-
-// hostAllowed parsed URL host'u allowlist'te mi kontrolü.
-func hostAllowed(host string) bool {
-	host = strings.ToLower(host)
-	// port'u at
-	if i := strings.LastIndex(host, ":"); i != -1 {
-		host = host[:i]
-	}
-	_, ok := loadHTTPAllowlist()[host]
-	return ok
+var httpFetchClient = &http.Client{
+	Timeout: httpFetchTimeout,
+	Transport: &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   httpFetchTimeout,
+			KeepAlive: 30 * time.Second,
+			Control:   ssrfDialControl,
+		}).DialContext,
+		MaxIdleConns:          10,
+		IdleConnTimeout:       30 * time.Second,
+		TLSHandshakeTimeout:   httpFetchTimeout,
+		ResponseHeaderTimeout: httpFetchTimeout,
+	},
 }
 
 // ssrfDialControl her dial'dan önce çözümlenmiş IP'nin private/loopback olmadığını
@@ -133,7 +102,8 @@ func isInternalIP(ip net.IP) bool {
 	return false
 }
 
-// validateAndPrepareURL şema, host ve allowlist kontrolü yapar.
+// validateAndPrepareURL şema ve host kontrolü yapar (allowlist yok — herhangi bir
+// public URL kabul edilir, sadece SSRF koruması filtreler).
 func validateAndPrepareURL(rawURL string) (*url.URL, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -145,13 +115,11 @@ func validateAndPrepareURL(rawURL string) (*url.URL, error) {
 	if u.Host == "" {
 		return nil, fmt.Errorf("httpGet: missing host")
 	}
-	if !hostAllowed(u.Host) {
-		return nil, fmt.Errorf("httpGet: host %q not in YAGPDB_HTTP_FETCH_HOSTS allowlist", u.Host)
-	}
 	return u, nil
 }
 
 // fetchHTTP HTTP GET yapar, body'yi (en fazla 1MB) ve status code'u döner.
+// Premium kontrolü ÇAĞIRAN tarafında yapılır (tmplHTTPGet / tmplHTTPGetJSON).
 func (c *Context) fetchHTTP(rawURL string) (string, int, error) {
 	u, err := validateAndPrepareURL(rawURL)
 	if err != nil {
@@ -185,7 +153,11 @@ func (c *Context) fetchHTTP(rawURL string) (string, int, error) {
 }
 
 // tmplHTTPGet response body'yi string olarak döner. Status >= 400 ise hata.
+// Sadece premium guild'lerde çalışır.
 func (c *Context) tmplHTTPGet(rawURL string) (string, error) {
+	if !c.IsPremium {
+		return "", ErrHTTPFetchNotPremium
+	}
 	if c.IncreaseCheckCallCounter("http_get", httpFetchMaxCalls) {
 		return "", ErrTooManyCalls
 	}
@@ -203,7 +175,11 @@ func (c *Context) tmplHTTPGet(rawURL string) (string, error) {
 }
 
 // tmplHTTPGetJSON response body'yi JSON olarak parse edip sdict / slice döner.
+// Sadece premium guild'lerde çalışır.
 func (c *Context) tmplHTTPGetJSON(rawURL string) (interface{}, error) {
+	if !c.IsPremium {
+		return nil, ErrHTTPFetchNotPremium
+	}
 	if c.IncreaseCheckCallCounter("http_get", httpFetchMaxCalls) {
 		return nil, ErrTooManyCalls
 	}
