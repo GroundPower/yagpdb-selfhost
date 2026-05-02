@@ -763,17 +763,18 @@ func (r Roles) Swap(i, j int) {
 
 // A VoiceState stores the voice states of Guilds
 type VoiceState struct {
-	UserID     int64  `json:"user_id,string"`
-	SessionID  string `json:"session_id"`
-	ChannelID  int64  `json:"channel_id,string"`
-	GuildID    int64  `json:"guild_id,string"`
-	Suppress   bool   `json:"suppress"`
-	SelfMute   bool   `json:"self_mute"`
-	SelfDeaf   bool   `json:"self_deaf"`
-	Mute       bool   `json:"mute"`
-	Deaf       bool   `json:"deaf"`
-	SelfStream bool   `json:"self_stream"`
-	SelfVideo  bool   `json:"self_video"`
+	UserID                 int64  `json:"user_id,string"`
+	SessionID              string `json:"session_id"`
+	ChannelID              int64  `json:"channel_id,string"`
+	GuildID                int64  `json:"guild_id,string"`
+	Suppress               bool   `json:"suppress"`
+	SelfMute               bool   `json:"self_mute"`
+	SelfDeaf               bool   `json:"self_deaf"`
+	Mute                   bool   `json:"mute"`
+	Deaf                   bool   `json:"deaf"`
+	SelfStream             bool   `json:"self_stream"`
+	SelfVideo              bool   `json:"self_video"`
+	MaxDAVEProtocolVersion int    `json:"max_dave_protocol_version"`
 }
 
 // A Presence stores the online, offline, or idle and game status of Guild members.
@@ -1470,10 +1471,37 @@ type WebhookParams struct {
 	AvatarURL       string              `json:"avatar_url,omitempty"`
 	TTS             bool                `json:"tts,omitempty"`
 	File            *File               `json:"-,omitempty"`
-	Components      []TopLevelComponent `json:"components"`
+	Components      []TopLevelComponent `json:"components,omitempty"`
 	Embeds          []*MessageEmbed     `json:"embeds,omitempty"`
-	Flags           int64               `json:"flags,omitempty"`
+	Flags           MessageFlags        `json:"flags,omitempty"`
 	AllowedMentions *AllowedMentions    `json:"allowed_mentions,omitempty"`
+}
+
+func (m *WebhookParams) MarshalJSON() ([]byte, error) {
+	type WebhookParamsAlias WebhookParams
+	temp := struct {
+		*WebhookParamsAlias
+		Content         string               `json:"content,omitempty"`
+		Components      *[]TopLevelComponent `json:"components,omitempty"`
+		Embeds          *[]*MessageEmbed     `json:"embeds,omitempty"`
+		AllowedMentions *AllowedMentions     `json:"allowed_mentions,omitempty"`
+		Flags           *MessageFlags        `json:"flags,omitempty"`
+	}{
+		WebhookParamsAlias: (*WebhookParamsAlias)(m),
+		Content:            m.Content,
+		AllowedMentions:    m.AllowedMentions,
+		Flags:              &m.Flags,
+	}
+
+	if m.Components != nil {
+		temp.Components = &m.Components
+	}
+
+	if m.Embeds != nil {
+		temp.Embeds = &m.Embeds
+	}
+
+	return json.Marshal(temp)
 }
 
 // MessageReaction stores the data for a message reaction.

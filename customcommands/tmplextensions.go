@@ -253,8 +253,9 @@ func tmplRunCC(ctx *templates.Context) interface{} {
 			ChannelID: channelID,
 			CmdID:     cmd.LocalID,
 
-			Member:  ctx.MS,
-			Message: ctx.Msg,
+			Member:       ctx.MS,
+			Message:      ctx.Msg,
+			CurrentFrame: ctx.CurrentFrame,
 
 			ExecutedFrom: ctx.ExecutedFrom,
 		}
@@ -337,9 +338,10 @@ func tmplScheduleUniqueCC(ctx *templates.Context) interface{} {
 			ChannelID: channelID,
 			CmdID:     cmd.LocalID,
 
-			Member:  ctx.MS,
-			Message: ctx.Msg,
-			UserKey: stringedKey,
+			Member:       ctx.MS,
+			Message:      ctx.Msg,
+			UserKey:      stringedKey,
+			CurrentFrame: ctx.CurrentFrame,
 
 			ExecutedFrom: ctx.ExecutedFrom,
 		}
@@ -991,7 +993,12 @@ func tmplResultSetToLightDBEntries(ctx *templates.Context, gs *dstate.GuildSet, 
 	// fill in user fields
 	membersToFetch := make([]int64, 0, len(entries))
 	for _, v := range entries {
-		if common.ContainsInt64Slice(membersToFetch, v.UserID) {
+		if slices.Contains(membersToFetch, v.UserID) {
+			continue
+		}
+		//don't check invalid snowflakes
+		idLen := len(fmt.Sprintf("%d", v.UserID))
+		if idLen < 16 {
 			continue
 		}
 
@@ -1002,7 +1009,7 @@ func tmplResultSetToLightDBEntries(ctx *templates.Context, gs *dstate.GuildSet, 
 	if len(membersToFetch) == 1 {
 		member, err := bot.GetMember(gs.ID, membersToFetch[0])
 		if err != nil {
-			ctx.LogEntry().WithError(err).Error("[cc] failed retrieving member")
+			ctx.LogEntry().WithError(err).Errorf("[cc] failed retrieving member %d", membersToFetch[0])
 			return entries
 		}
 

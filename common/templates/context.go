@@ -8,8 +8,10 @@ import (
 	"net/url"
 	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -102,11 +104,14 @@ var (
 		"clabel":           CreateLabel,
 		"ctextInput":       CreateTextInput,
 		"ctextDisplay":     CreateTextDisplay,
+		"cradioGroup":      CreateRadioGroup,
+		"ccheckboxGroup":   CreateCheckboxGroup,
+		"ccheckbox":        CreateCheckbox,
 
 		// message builders
 		"cembed":             CreateEmbed,
-		"complexMessage":     CreateMessageSend,
-		"complexMessageEdit": CreateMessageEdit,
+		"complexMessage":     CreateComplexMessage,
+		"complexMessageEdit": CreateComplexMessage,
 
 		// misc
 		"humanizeThousands": tmplHumanizeThousands,
@@ -158,7 +163,53 @@ func RegisterSetupFunc(f ContextSetupFunc) {
 	contextSetupFuncs = append(contextSetupFuncs, f)
 }
 
+type TemplateCooldowns struct {
+	sync.RWMutex
+	cooldowns map[string]time.Time
+}
+
+func (tc *TemplateCooldowns) Set(key string, duration time.Duration) bool {
+	tc.Lock()
+	defer tc.Unlock()
+	t, ok := tc.cooldowns[key]
+	if !ok || time.Now().After(t) {
+		tc.cooldowns[key] = time.Now().Add(duration)
+		return false
+	}
+	return true
+}
+
+func (tc *TemplateCooldowns) gc(d time.Duration) {
+	ticker := time.NewTicker(d)
+	for range ticker.C {
+		tc.Tick()
+	}
+}
+
+func (tc *TemplateCooldowns) Tick() {
+	tc.Lock()
+	defer tc.Unlock()
+	var deleteCounter int
+	for k, v := range tc.cooldowns {
+		if time.Now().After(v) {
+			delete(tc.cooldowns, k)
+			deleteCounter++
+		}
+	}
+	if deleteCounter > 0 {
+		logger.Infof("deleted %d template cooldowns", deleteCounter)
+	}
+}
+
+var templateCooldownTracker *TemplateCooldowns
+
+func InitCooldownTracker() {
+	templateCooldownTracker = &TemplateCooldowns{cooldowns: make(map[string]time.Time)}
+	go templateCooldownTracker.gc(time.Minute)
+}
+
 func init() {
+	InitCooldownTracker()
 	RegisterSetupFunc(baseContextFuncs)
 	RegisterSetupFunc(interactionContextFuncs)
 
@@ -210,32 +261,51 @@ type Context struct {
 }
 
 type ContextFrame struct {
-	CS *dstate.ChannelState
+	CS *dstate.ChannelState `json:"cs"`
 
-	MentionEveryone bool
-	MentionHere     bool
-	MentionRoles    []int64
+	MentionEveryone bool    `json:"mention_everyone"`
+	MentionHere     bool    `json:"mention_here"`
+	MentionRoles    []int64 `json:"mention_roles"`
 
-	DelResponse       bool
-	PublishResponse   bool
-	EphemeralResponse bool
+	DelResponse       bool `json:"del_response"`
+	PublishResponse   bool `json:"publish_response"`
+	EphemeralResponse bool `json:"ephemeral_response"`
 
-	DelResponseDelay         int
-	EmbedsToSend             []*discordgo.MessageEmbed
-	ComponentsToSend         []discordgo.TopLevelComponent
-	AddResponseReactionNames []string
+	DelResponseDelay         int                           `json:"del_response_delay"`
+	EmbedsToSend             []*discordgo.MessageEmbed     `json:"embeds_to_send"`
+	ComponentsToSend         []discordgo.TopLevelComponent `json:"components_to_send"`
+	AddResponseReactionNames []string                      `json:"add_response_reaction_names"`
 
-	isNestedTemplate bool
+	IsNestedTemplate bool `json:"is_nested_template"`
 	parsedTemplate   *template.Template
-	SendResponseInDM bool
+	SendResponseInDM bool `json:"send_response_in_dm"`
 
-	Interaction *CustomCommandInteraction
+	Interaction *CustomCommandInteraction `json:"interaction"`
 }
 
 type CustomCommandInteraction struct {
-	*discordgo.Interaction
-	RespondedTo bool
-	Deferred    bool
+	*discordgo.Interaction `json:"interaction"`
+	RespondedTo            bool `json:"responded_to"`
+	Deferred               bool `json:"deferred"`
+}
+
+func (c *CustomCommandInteraction) UnmarshalJSON(data []byte) error {
+	var aux struct {
+		Interaction *discordgo.Interaction `json:"interaction"`
+		RespondedTo bool                   `json:"responded_to"`
+		Deferred    bool                   `json:"deferred"`
+	}
+
+	err := json.Unmarshal(data, &aux)
+	if err != nil {
+		return err
+	}
+
+	c.Interaction = aux.Interaction
+	c.RespondedTo = aux.RespondedTo
+	c.Deferred = aux.Deferred
+
+	return nil
 }
 
 func NewContext(gs *dstate.GuildSet, cs *dstate.ChannelState, ms *dstate.MemberState) *Context {
@@ -403,10 +473,33 @@ func (c *Context) executeParsed() (string, error) {
 	var buf bytes.Buffer
 	w := LimitWriter(&buf, 25000)
 
-	// started := time.Now()
+	started := time.Now()
+
+	//log only if execution takes longer than 5 seconds
+	timer := time.AfterFunc(5*time.Second, func() {
+		logger.WithFields(logrus.Fields{
+			"guild_id":      c.GS.ID,
+			"executed_from": c.ExecutedFrom,
+			"cc_id":         c.Data["CCID"],
+		}).Warn("Template execution is taking longer than 5 seconds")
+	})
+
 	err := parsed.Execute(w, c.Data)
 
-	// dur := time.Since(started)
+	defer func() {
+		timer.Stop()
+		dur := time.Since(started)
+		if dur > 5*time.Second {
+			logger.WithFields(logrus.Fields{
+				"guild_id":      c.GS.ID,
+				"executed_from": c.ExecutedFrom,
+				"cc_id":         c.Data["CCID"],
+				"success":       err == nil,
+				"duration":      dur,
+			}).Warn("Long template execution finished")
+		}
+	}()
+
 	if c.FixedOutput != "" {
 		return c.FixedOutput, nil
 	}
@@ -428,7 +521,7 @@ func (c *Context) newContextFrame(cs *dstate.ChannelState) *ContextFrame {
 	old := c.CurrentFrame
 	c.CurrentFrame = &ContextFrame{
 		CS:               cs,
-		isNestedTemplate: true,
+		IsNestedTemplate: true,
 	}
 
 	return old
@@ -555,14 +648,14 @@ func (c *Context) SendResponse(content string) (m *discordgo.Message, err error)
 			Content:         msgSend.Content,
 			Embeds:          msgSend.Embeds,
 			AllowedMentions: &msgSend.AllowedMentions,
-			Flags:           int64(msgSend.Flags),
+			Flags:           msgSend.Flags,
 		})
 	case sendMessageInteractionDeferred:
 		m, err = common.BotSession.EditOriginalInteractionResponse(common.BotApplication.ID, c.CurrentFrame.Interaction.Token, &discordgo.WebhookParams{
 			Content:         msgSend.Content,
 			Embeds:          msgSend.Embeds,
 			AllowedMentions: &msgSend.AllowedMentions,
-			Flags:           int64(msgSend.Flags),
+			Flags:           msgSend.Flags,
 		})
 		if err == nil {
 			c.CurrentFrame.Interaction.Deferred = false
@@ -610,6 +703,11 @@ const (
 	sendMessageInteractionFollowup
 	sendMessageInteractionDeferred
 )
+
+// SetCooldown Sets a cooldown for a key, returns true if the key is already on cooldown
+func (c *Context) SetCooldown(key string, duration time.Duration) bool {
+	return templateCooldownTracker.Set(key, duration)
+}
 
 // IncreaseCheckCallCounter Returns true if key is above the limit
 func (c *Context) IncreaseCheckCallCounter(key string, limit int) bool {
@@ -666,7 +764,7 @@ func (c *Context) LogEntry() *logrus.Entry {
 }
 
 func (c *Context) addContextFunc(name string, f interface{}) {
-	if !common.ContainsStringSlice(c.DisabledContextFuncs, name) {
+	if !slices.Contains(c.DisabledContextFuncs, name) {
 		c.ContextFuncs[name] = f
 	}
 }
@@ -774,6 +872,8 @@ func baseContextFuncs(c *Context) {
 	c.addContextFunc("undeafenMember", c.tmplUndeafenMember)
 	c.addContextFunc("editNickname", c.tmplEditNickname)
 	c.addContextFunc("getGuildMembers", c.tmplGetGuildMembers)
+	c.addContextFunc("memberAbove", c.tmplMemberAbove)
+	c.addContextFunc("memberAboveRole", c.tmplMemberAboveRole)
 
 	// Thread functions
 	c.addContextFunc("addThreadMember", c.tmplThreadMemberAdd)

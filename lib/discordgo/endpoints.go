@@ -11,7 +11,14 @@
 
 package discordgo
 
-import "strconv"
+import (
+	"net/url"
+	"os"
+	"strconv"
+	"strings"
+
+	"github.com/sirupsen/logrus"
+)
 
 // APIVersion is the Discord API version used for the REST and Websocket API.
 var APIVersion = "10"
@@ -246,6 +253,7 @@ func CreateEndpoints(base string) {
 	EndpointGateway = EndpointAPI + "gateway"
 	EndpointGatewayBot = EndpointGateway + "/bot"
 	EndpointWebhooks = EndpointAPI + "webhooks/"
+	EndpointInteractions = EndpointAPI + "interactions/"
 	EndpointStickers = EndpointAPI + "stickers/"
 
 	EndpointCDN = "https://cdn.discordapp.com/"
@@ -268,7 +276,7 @@ func CreateEndpoints(base string) {
 	EndpointResetPassword = EndpointAuth + "reset"
 	EndpointRegister = EndpointAuth + "register"
 
-	EndpointVoice = EndpointAPI + "/voice/"
+	EndpointVoice = EndpointAPI + "voice/"
 	EndpointVoiceRegions = EndpointVoice + "regions"
 	EndpointVoiceIce = EndpointVoice + "ice"
 
@@ -445,12 +453,11 @@ func CreateEndpoints(base string) {
 		return EndpointAPI + "skus/" + StrID(skuID) + "/subscriptions/" + StrID(subscriptionID)
 	}
 
-	EndpointInteractions = EndpointAPI + "interactions"
 	EndpointInteractionCallback = func(interactionID int64, token string) string {
-		return EndpointInteractions + "/" + StrID(interactionID) + "/" + token + "/callback"
+		return EndpointInteractions + StrID(interactionID) + "/" + token + "/callback"
 	}
 	EndpointWebhookInteraction = func(applicationID int64, token string) string {
-		return EndpointWebhooks + "/" + StrID(applicationID) + "/" + token
+		return EndpointWebhooks + StrID(applicationID) + "/" + token
 	}
 	EndpointInteractionOriginalMessage = func(applicationID int64, token string) string {
 		return EndpointWebhookInteraction(applicationID, token) + "/messages/@original"
@@ -460,6 +467,29 @@ func CreateEndpoints(base string) {
 	}
 }
 
+func getProxyHost() string {
+	host := strings.TrimSpace(os.Getenv("YAGPDB_DISCORD_PROXY"))
+	if host == "" {
+		host = "https://discord.com/"
+	}
+	if !strings.HasSuffix(host, "/") {
+		host += "/"
+	}
+
+	parsedHost, err := url.Parse(host)
+	if err != nil {
+		logrus.WithError(err).Errorf("Failed to parse discord proxy %s", host)
+		os.Exit(1)
+	}
+
+	if parsedHost.Scheme != "https" && parsedHost.Scheme != "http" {
+		logrus.Errorf("Invalid discord proxy scheme %s (must be http or https)", parsedHost.Scheme)
+		os.Exit(1)
+	}
+	return host
+}
+
 func init() {
-	CreateEndpoints("https://discord.com/")
+	host := getProxyHost()
+	CreateEndpoints(host)
 }

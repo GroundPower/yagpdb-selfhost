@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"regexp"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -83,7 +84,8 @@ type DelayedRunCCData struct {
 	Message *discordgo.Message
 	Member  *dstate.MemberState
 
-	UserKey interface{} `json:"user_key"`
+	UserKey      interface{}             `json:"user_key"`
+	CurrentFrame *templates.ContextFrame `json:"current_frame,omitempty"`
 
 	ExecutedFrom templates.ExecutedFromType `json:"executed_from"`
 }
@@ -103,7 +105,7 @@ var cmdEvalCommand = &commands.YAGCommand{
 
 		writeRoles := common.GetCoreServerConfCached(data.GuildData.GS.ID).AllowedWriteRoles
 		for _, r := range data.GuildData.MS.Member.Roles {
-			if common.ContainsInt64Slice(writeRoles, r) {
+			if slices.Contains(writeRoles, r) {
 				hasCoreWriteRole = true
 				break
 			}
@@ -577,6 +579,21 @@ type TriggeredCC struct {
 	Args     []string
 }
 
+func getErrorChannel(cmd *models.CustomCommand, tmplCtx *templates.Context) int64 {
+	cmdGroup := cmd.GetGroup()
+	errChannel := tmplCtx.CurrentFrame.CS.ID
+	if cmd.RedirectErrorsChannel != 0 {
+		errChannel = cmd.RedirectErrorsChannel
+	} else if cmdGroup != nil && cmdGroup.RedirectErrorsChannel != 0 {
+		errChannel = cmdGroup.RedirectErrorsChannel
+	}
+	channel := tmplCtx.GS.GetChannel(errChannel)
+	if channel == nil {
+		return 0
+	}
+	return channel.ID
+}
+
 func ExecuteCustomCommand(cmd *models.CustomCommand, tmplCtx *templates.Context) error {
 	defer func() {
 		if err := recover(); err != nil {
@@ -602,6 +619,7 @@ func ExecuteCustomCommand(cmd *models.CustomCommand, tmplCtx *templates.Context)
 		"trigger_type": CommandTriggerType(cmd.TriggerType).String(),
 		"guild":        csCop.GuildID,
 		"channel_name": csCop.Name,
+		"cc_id":        cmd.LocalID,
 	})
 
 	// do not allow concurrent executions of the same custom command, to prevent most common kinds of abuse
@@ -610,16 +628,11 @@ func ExecuteCustomCommand(cmd *models.CustomCommand, tmplCtx *templates.Context)
 		CCID:    cmd.LocalID,
 	}
 	lockHandle := CCExecLock.Lock(lockKey, time.Minute, time.Minute*10)
+
 	if lockHandle == -1 {
 		f.Warn("Exceeded max lock attempts for cc")
-		errChannel := tmplCtx.CurrentFrame.CS.ID
-		if cmd.RedirectErrorsChannel != 0 {
-			errChannel = cmd.RedirectErrorsChannel
-		} else if cmd.R.Group != nil && cmd.R.Group.RedirectErrorsChannel != 0 {
-			errChannel = cmd.R.Group.RedirectErrorsChannel
-		}
-
-		if cmd.ShowErrors {
+		errChannel := getErrorChannel(cmd, tmplCtx)
+		if cmd.ShowErrors && errChannel != 0 {
 			common.BotSession.ChannelMessageSend(errChannel, fmt.Sprintf("Gave up trying to execute custom command #%d after 1 minute because there is already one or more instances of it being executed.", cmd.LocalID))
 		}
 		updatePostCommandRan(cmd, errors.New("Gave up trying to execute, already an existing instance executing"))
@@ -649,14 +662,8 @@ func ExecuteCustomCommand(cmd *models.CustomCommand, tmplCtx *templates.Context)
 	if err != nil {
 		logger.WithField("guild", tmplCtx.GS.ID).WithError(err).Error("Error executing custom command")
 
-		errChannel := tmplCtx.CurrentFrame.CS.ID
-		if cmd.RedirectErrorsChannel != 0 {
-			errChannel = cmd.RedirectErrorsChannel
-		} else if cmd.R.Group != nil && cmd.R.Group.RedirectErrorsChannel != 0 {
-			errChannel = cmd.R.Group.RedirectErrorsChannel
-		}
-
-		if cmd.ShowErrors {
+		errChannel := getErrorChannel(cmd, tmplCtx)
+		if cmd.ShowErrors && errChannel != 0 {
 			out += "\nAn error caused the execution of the custom command template to stop:\n"
 			out += formatCustomCommandRunErr(chanMsg, err)
 
@@ -814,14 +821,8 @@ func onExecPanic(cmd *models.CustomCommand, err error, tmplCtx *templates.Contex
 
 	l.Error("Error executing custom command")
 
-	errChannel := tmplCtx.CurrentFrame.CS.ID
-	if cmd.RedirectErrorsChannel != 0 {
-		errChannel = cmd.RedirectErrorsChannel
-	} else if cmd.R.Group != nil && cmd.R.Group.RedirectErrorsChannel != 0 {
-		errChannel = cmd.R.Group.RedirectErrorsChannel
-	}
-
-	if cmd.ShowErrors {
+	errChannel := getErrorChannel(cmd, tmplCtx)
+	if cmd.ShowErrors && errChannel != 0 {
 		out := "\nAn error caused the execution of the custom command template to stop:\n"
 		out += "`" + err.Error() + "`"
 
