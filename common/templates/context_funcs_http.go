@@ -4,17 +4,16 @@ package templates
 // `httpGet` ve `httpGetJSON` template fonksiyonlarını sağlar.
 //
 // Erişim & güvenlik:
-//   - Sadece premium guild'lerde kullanılabilir (c.IsPremium). Self-host'ta hangi
-//     guild'in premium olduğuna sen karar veriyorsun (bot owner dashboard'unda flag).
+//   - Tüm guild'lerde kullanılabilir. Premium guild'ler daha yüksek call limit alır
+//     (CC başına 60 vs. 10 — runCC pattern'iyle aynı).
 //   - SSRF koruması: hostname DNS ile resolve edilir, private/loopback/CGNAT/
 //     link-local IP aralıkları reddedilir (Docker iç network'üne erişim engellenir).
 //   - http/https dışı şemalar reddedilir.
-//   - 5 saniye timeout, 1 MB body limit, CC başına 10 çağrı limit.
+//   - 5 saniye timeout, 1 MB body limit.
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -25,13 +24,12 @@ import (
 )
 
 const (
-	httpFetchTimeout      = 5 * time.Second
-	httpFetchMaxBodyBytes = 1024 * 1024 // 1 MB
-	httpFetchMaxCalls     = 10          // CC başına
-	httpFetchUserAgent    = "YAGPDB-selfhost/1.0 (httpGet template fn)"
+	httpFetchTimeout         = 5 * time.Second
+	httpFetchMaxBodyBytes    = 1024 * 1024 // 1 MB
+	httpFetchMaxCallsNormal  = 10          // CC başına (non-premium)
+	httpFetchMaxCallsPremium = 60          // CC başına (premium)
+	httpFetchUserAgent       = "YAGPDB-selfhost/1.0 (httpGet template fn)"
 )
-
-var ErrHTTPFetchNotPremium = errors.New("httpGet: bu guild premium değil — self-host dashboard'undan premium işaretle")
 
 var httpFetchClient = &http.Client{
 	Timeout: httpFetchTimeout,
@@ -153,12 +151,9 @@ func (c *Context) fetchHTTP(rawURL string) (string, int, error) {
 }
 
 // tmplHTTPGet response body'yi string olarak döner. Status >= 400 ise hata.
-// Sadece premium guild'lerde çalışır.
+// CC başına 10 çağrı (premium: 60). httpGet ve httpGetJSON aynı sayacı paylaşır.
 func (c *Context) tmplHTTPGet(rawURL string) (string, error) {
-	if !c.IsPremium {
-		return "", ErrHTTPFetchNotPremium
-	}
-	if c.IncreaseCheckCallCounter("http_get", httpFetchMaxCalls) {
+	if c.IncreaseCheckCallCounterPremium("http_get", httpFetchMaxCallsNormal, httpFetchMaxCallsPremium) {
 		return "", ErrTooManyCalls
 	}
 	body, status, err := c.fetchHTTP(rawURL)
@@ -175,12 +170,9 @@ func (c *Context) tmplHTTPGet(rawURL string) (string, error) {
 }
 
 // tmplHTTPGetJSON response body'yi JSON olarak parse edip sdict / slice döner.
-// Sadece premium guild'lerde çalışır.
+// CC başına 10 çağrı (premium: 60). httpGet ve httpGetJSON aynı sayacı paylaşır.
 func (c *Context) tmplHTTPGetJSON(rawURL string) (interface{}, error) {
-	if !c.IsPremium {
-		return nil, ErrHTTPFetchNotPremium
-	}
-	if c.IncreaseCheckCallCounter("http_get", httpFetchMaxCalls) {
+	if c.IncreaseCheckCallCounterPremium("http_get", httpFetchMaxCallsNormal, httpFetchMaxCallsPremium) {
 		return nil, ErrTooManyCalls
 	}
 	body, status, err := c.fetchHTTP(rawURL)
