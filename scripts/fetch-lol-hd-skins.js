@@ -38,17 +38,18 @@ const CATEGORY = "Category:High_definition_champion_skins";
 const CD_SKINS = "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/skins.json";
 const OUT = path.join(__dirname, "..", "data", "lolHdSkins.json");
 
-// kEpic, kLegendary, kMythic vs. → kullanıcı dostu format + tahmini RP
-// (RP'ler tier'ın tipik fiyatı; legacy/event skin'lerde farklılık olabilir)
+// kEpic, kLegendary, kMythic vs. → kullanıcı dostu format + tahmini RP + sort priority
+// (RP'ler tier'ın tipik fiyatı; legacy/event skin'lerde farklılık olabilir → "*"
+// sembolüyle disclaimer'a referans, embed footer'da açıklanır)
 const TIER_DISPLAY = {
-    kEpic:         { emoji: "🟣", name: "Epic",         rp: "~1350" },
-    kLegendary:    { emoji: "🟡", name: "Legendary",    rp: "~1820" },
-    kMythic:       { emoji: "🌸", name: "Mythic",       rp: "ME"     }, // Mythic Essence
-    kUltimate:     { emoji: "🔴", name: "Ultimate",     rp: "~3250" },
-    kRare:         { emoji: "🔵", name: "Rare",         rp: "limited" },
-    kExalted:      { emoji: "💎", name: "Exalted",      rp: "~5400" },
-    kTranscendent: { emoji: "✨", name: "Transcendent", rp: "—"      },
-    kNoRarity:     { emoji: "⚪", name: "Standard",     rp: "~975"  },
+    kTranscendent: { emoji: "✨", name: "Transcendent", rp: "—",     order: 1 },
+    kExalted:      { emoji: "💎", name: "Exalted",      rp: "~5400", order: 2 },
+    kMythic:       { emoji: "🌸", name: "Mythic",       rp: "ME",    order: 3 },
+    kUltimate:     { emoji: "🔴", name: "Ultimate",     rp: "~3250", order: 4 },
+    kLegendary:    { emoji: "🟡", name: "Legendary",    rp: "~1820", order: 5 },
+    kEpic:         { emoji: "🟣", name: "Epic",         rp: "~1350", order: 6 },
+    kRare:         { emoji: "🔵", name: "Rare",         rp: "limited", order: 7 },
+    kNoRarity:     { emoji: "⚪", name: "Standard",     rp: "~975",  order: 8 },
 };
 
 const normalize = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -196,15 +197,6 @@ async function fetchAll() {
         });
     }
 
-    // Her şampiyonun skin'lerini isim sırala, Classic en başa
-    for (const c of Object.values(champions)) {
-        c.skins.sort((a, b) => {
-            if (a.n === "Classic") return -1;
-            if (b.n === "Classic") return 1;
-            return a.n.localeCompare(b.n);
-        });
-    }
-
     // Tier bilgisini CD'den çek ve eşleştir
     const cdTiers = await fetchCDAndMatchTiers(champions);
     for (const [champKey, champ] of Object.entries(champions)) {
@@ -212,12 +204,26 @@ async function fetchAll() {
             const tierCode = cdTiers[champKey + skin.k];
             const tierInfo = tierCode && TIER_DISPLAY[tierCode];
             if (tierInfo) {
-                skin.t = `${tierInfo.emoji} ${tierInfo.name} · ${tierInfo.rp} RP`;
+                skin.t = `${tierInfo.emoji} ${tierInfo.name} · ${tierInfo.rp} RP*`;
+                skin._o = tierInfo.order;
                 tierMatched++;
             } else {
+                skin._o = 99;
                 tierMissing++;
             }
         }
+    }
+
+    // Sort: Classic en başta, sonra rarity (yüksekten düşüğe), sonra alfabetik
+    for (const c of Object.values(champions)) {
+        c.skins.sort((a, b) => {
+            if (a.n === "Classic") return -1;
+            if (b.n === "Classic") return 1;
+            if (a._o !== b._o) return a._o - b._o;
+            return a.n.localeCompare(b.n);
+        });
+        // _o sadece sort için, JSON'a yazma
+        for (const s of c.skins) delete s._o;
     }
 
     const out = {
