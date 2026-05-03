@@ -2143,7 +2143,9 @@ func (c *Context) tmplEditNickname(Nickname string) (string, error) {
 }
 
 func (c *Context) tmplSort(input interface{}, args ...interface{}) (interface{}, error) {
-	if c.IncreaseCheckCallCounterPremium("sort", 1, 3) {
+	// Self-host bump: 1/3 → 15/45 (×15). Multi-key sort, complex tabloları sıralama
+	// gibi senaryolar için yeterli; tek CC içinde keyfi sayıda sort'a karşı kapı kalır.
+	if c.IncreaseCheckCallCounterPremium("sort", 15, 45) {
 		return "", ErrTooManyCalls
 	}
 
