@@ -135,6 +135,18 @@ async function fetchCDAndMatchTiers(wikiChampions) {
     return tiers;
 }
 
+// Wiki bazı skin'leri grup splash'ı ile bireysel splash arasında karıştırıyor.
+// Kategoride listelenen `<Champion>_<Skin>Skin_HD.jpg` storage'da olmayabilir,
+// asıl HD dosya `<Event><Year>Skin_HD.jpg` formatında. Bu mapping override eder.
+//
+// Yeni bir grup splash keşfedersen buraya ekle (key: champKey+skinKey, value: filename).
+const FILE_EXCEPTIONS = {
+    // Pool Party 2018 — Gangplank, Caitlyn, Zoe ortak splash
+    "gangplankpoolparty": "PoolParty2018Skin_HD.jpg",
+    "caitlynpoolparty":   "PoolParty2018Skin_HD.jpg",
+    "zoepoolparty":       "PoolParty2018Skin_HD.jpg",
+};
+
 async function fetchAll() {
     const members = [];
     let cmcontinue = null;
@@ -233,6 +245,22 @@ async function fetchAll() {
             if (a.o !== b.o) return a.o - b.o;
             return a.n.localeCompare(b.n);
         });
+    }
+
+    // Wiki tutarsızlığı override: bilinen grup splash'lar için file değiştir
+    let exceptionsApplied = 0;
+    for (const [champKey, champ] of Object.entries(champions)) {
+        for (const skin of champ.skins) {
+            const fullKey = champKey + skin.k;
+            if (FILE_EXCEPTIONS[fullKey]) {
+                skin.f = FILE_EXCEPTIONS[fullKey];
+                files[fullKey] = FILE_EXCEPTIONS[fullKey];
+                exceptionsApplied++;
+            }
+        }
+    }
+    if (exceptionsApplied > 0) {
+        console.log(`[skins] ${exceptionsApplied} grup splash override uygulandı`);
     }
 
     const out = {
