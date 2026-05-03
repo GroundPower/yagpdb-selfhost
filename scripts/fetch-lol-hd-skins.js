@@ -254,10 +254,34 @@ const FILE_EXCEPTIONS = {
     "tarictaricluminshield":  "RPG2020Skin_HD.jpg",
     "twitchtwitchshadowfoot": "RPG2020Skin_HD.jpg",
 
-    // NOT EKLENMEMİŞ:
-    // - April Fools 2015/2016/2017: skin key'lerini doğrulamadık (joke skinler)
-    // - Guardian of the Sands 2015/2019: champion listesi belirsiz
-    // - T1 2025: bireysel champion skinleri henüz wiki'de yok (Summer 2026 release)
+    // === April Fools 2015 — Surprise Party Amumu, Urf the Nami-tee, Archduke Nasus, Order of the Banana Soraka, Definitely Not Udyr ===
+    "amumusurpriseparty":     "AprilFools2015Skin_HD.jpg",
+    "namiurfthenamitee":      "AprilFools2015Skin_HD.jpg",
+    "nasusarchduke":          "AprilFools2015Skin_HD.jpg",
+    "sorakaorderofthebanana": "AprilFools2015Skin_HD.jpg",
+    "udyrdefinitelynot":      "AprilFools2015Skin_HD.jpg",
+
+    // === April Fools 2016 — Draven Draven (tek başına) ===
+    "dravendravendraven": "AprilFools2016Skin_HD.jpg",
+
+    // === April Fools 2017 — Moo Cow Alistar, Super Kennen, Pug'Maw Kog'Maw, Renektoy ===
+    "alistarmoocow":     "AprilFools2017Skin_HD.jpg",
+    "kennensuper":       "AprilFools2017Skin_HD.jpg",
+    "kogmawpugmaw":      "AprilFools2017Skin_HD.jpg",
+    "renektonrenektoy":  "AprilFools2017Skin_HD.jpg",
+
+    // === Guardian of the Sands 2015 — Kha'Zix, Rammus, Skarner, Xerath (April 2015) ===
+    "khazixguardianofthesands":  "GuardianoftheSands2015Skin_HD.jpg",
+    "rammusguardianofthesands":  "GuardianoftheSands2015Skin_HD.jpg",
+    "skarnerguardianofthesands": "GuardianoftheSands2015Skin_HD.jpg",
+    "xerathguardianofthesands":  "GuardianoftheSands2015Skin_HD.jpg",
+
+    // === Guardian of the Sands 2019 — Janna, Rengar, Ryze (January 2020 release, 2019 PBE) ===
+    "jannaguardianofthesands":  "GuardianoftheSands2019Skin_HD.jpg",
+    "rengarguardianofthesands": "GuardianoftheSands2019Skin_HD.jpg",
+    "ryzeguardianofthesands":   "GuardianoftheSands2019Skin_HD.jpg",
+
+    // NOT EKLENMEMİŞ: T1 2025 (bireysel champion skinleri henüz wiki'de yok, Summer 2026 release)
 };
 
 async function fetchAll() {
