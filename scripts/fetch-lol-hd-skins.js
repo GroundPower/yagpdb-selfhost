@@ -337,6 +337,12 @@ const FILE_EXCEPTIONS = {
     "rengarguardianofthesands": "GuardianoftheSands2019Skin_HD.jpg",
     "ryzeguardianofthesands":   "GuardianoftheSands2019Skin_HD.jpg",
 
+    // === Bounty Hunter (yılsız grup splash) — Aatrox (Sea Hunter), Quinn (Corsair), Garen (Rogue Admiral), Malphite (Ironside) ===
+    "aatroxseahunter":   "BountyHunterSkin_HD.jpg",
+    "quinncorsair":      "BountyHunterSkin_HD.jpg",
+    "garenrogueadmiral": "BountyHunterSkin_HD.jpg",
+    "malphiteironside":  "BountyHunterSkin_HD.jpg",
+
     // NOT EKLENMEMİŞ: T1 2025 (bireysel champion skinleri henüz wiki'de yok, Summer 2026 release)
 };
 
