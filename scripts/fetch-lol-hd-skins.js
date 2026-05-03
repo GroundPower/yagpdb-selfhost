@@ -36,6 +36,7 @@ const path = require("path");
 const API = "https://wiki.leagueoflegends.com/api.php";
 const CATEGORY = "Category:High_definition_champion_skins";
 const CD_SKINS = "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/skins.json";
+const WIKI_SKINDATA = "https://wiki.leagueoflegends.com/en-us/Module:SkinData/data?action=raw";
 const OUT = path.join(__dirname, "..", "data", "lolHdSkins.json");
 
 // kEpic, kLegendary, kMythic vs. → kullanıcı dostu format + tahmini RP + sort priority
@@ -133,6 +134,61 @@ async function fetchCDAndMatchTiers(wikiChampions) {
     }
 
     return tiers;
+}
+
+// Wiki Module:SkinData/data Lua dosyasından gerçek RP fiyatlarını çek.
+// Pattern: 2-space indent = champion, 6-space indent = skin, 8-space indent = field.
+async function fetchWikiPrices() {
+    process.stdout.write("[wiki] SkinData/data çekiliyor... ");
+    const res = await fetch(WIKI_SKINDATA, {
+        headers: { "User-Agent": "YAGPDB-selfhost-skin-lookup/1.0" },
+    });
+    if (!res.ok) throw new Error(`Wiki SkinData HTTP ${res.status}`);
+    const text = await res.text();
+    process.stdout.write(`${(text.length / 1024).toFixed(0)} KB alındı\n`);
+
+    const prices = {}; // champKey+skinKey → cost (number) veya string ("Special" vb.)
+
+    const champStartRegex = /^  \["([^"]+)"\] = \{$/gm;
+    const skinStartRegex = /^      \["([^"]+)"\] = \{$/gm;
+    const costRegex = /^        \["cost"\] = (?:"([^"]+)"|(\d+))/m;
+
+    // Tüm champion start position'larını topla
+    const champs = [];
+    let m;
+    while ((m = champStartRegex.exec(text)) !== null) {
+        champs.push({ name: m[1], start: m.index });
+    }
+
+    for (let i = 0; i < champs.length; i++) {
+        const champName = champs[i].name;
+        const champStart = champs[i].start;
+        const champEnd = i + 1 < champs.length ? champs[i + 1].start : text.length;
+        const champText = text.slice(champStart, champEnd);
+
+        // Bu champion içinde tüm skin'leri bul
+        const skinPositions = [];
+        let s;
+        const localSkinRegex = new RegExp(skinStartRegex.source, "gm");
+        while ((s = localSkinRegex.exec(champText)) !== null) {
+            skinPositions.push({ name: s[1], start: s.index });
+        }
+
+        for (let j = 0; j < skinPositions.length; j++) {
+            const skinName = skinPositions[j].name;
+            const skinStart = skinPositions[j].start;
+            const skinEnd = j + 1 < skinPositions.length ? skinPositions[j + 1].start : champText.length;
+            const skinText = champText.slice(skinStart, skinEnd);
+
+            const cm = skinText.match(costRegex);
+            if (cm) {
+                const cost = cm[1] || parseInt(cm[2], 10);
+                prices[normalize(champName) + normalize(skinName)] = cost;
+            }
+        }
+    }
+
+    return prices;
 }
 
 // Wiki bazı skin'leri grup splash'ı ile bireysel splash arasında karıştırıyor.
@@ -357,22 +413,56 @@ async function fetchAll() {
         });
     }
 
-    // Tier bilgisini CD'den çek ve eşleştir
-    const cdTiers = await fetchCDAndMatchTiers(champions);
+    // Tier (CD) ve fiyat (wiki) bilgilerini paralel çek
+    const [cdTiers, wikiPrices] = await Promise.all([
+        fetchCDAndMatchTiers(champions),
+        fetchWikiPrices(),
+    ]);
+
+    let priceMatched = 0;
     for (const [champKey, champ] of Object.entries(champions)) {
         for (const skin of champ.skins) {
             const tierCode = cdTiers[champKey + skin.k];
             const tierInfo = tierCode && TIER_DISPLAY[tierCode];
+            const realPrice = wikiPrices[champKey + skin.k];
+
+            // RP/cost display formatı:
+            //   - Classic (skin.k === "original"): RP yok (şampiyon satın alma fiyatı, skin değil)
+            //   - Number: "1350 RP"
+            //   - String ("Special", "Sanctum", "Mythic Essence" vb.): "Special" (RP'siz)
+            //   - Yoksa tier tahmini: "~1350 RP*"
+            let costDisplay = "";
+            if (skin.k === "original") {
+                // Classic skin → cost satın alma fiyatı, atla
+                costDisplay = "";
+            } else if (realPrice !== undefined) {
+                if (typeof realPrice === "number") {
+                    costDisplay = ` · ${realPrice} RP`;
+                } else {
+                    costDisplay = ` · ${realPrice}`;  // "Special", "Sanctum" vb.
+                }
+                priceMatched++;
+            } else if (tierInfo && tierInfo.rp) {
+                costDisplay = ` · ${tierInfo.rp} RP*`;  // "*" tahmin
+            }
+
             if (tierInfo) {
-                skin.t = `${tierInfo.emoji} ${tierInfo.name} · ${tierInfo.rp} RP*`;
+                skin.t = `${tierInfo.emoji} ${tierInfo.name}${costDisplay}`;
                 skin.o = tierInfo.order;
                 tierMatched++;
+            } else if (realPrice !== undefined && skin.k !== "original") {
+                skin.t = `❓ Tier${costDisplay}`;
+                skin.o = 99;
+            } else if (skin.k === "original") {
+                skin.t = `⚪ Classic`;  // Default skin için minimal
+                skin.o = 8;
             } else {
                 skin.o = 99;
                 tierMissing++;
             }
         }
     }
+    console.log(`[wiki] Gerçek RP eşleşme: ${priceMatched}`);
 
     // Sort: Classic en başta, sonra rarity (yüksekten düşüğe), sonra alfabetik
     for (const c of Object.values(champions)) {
