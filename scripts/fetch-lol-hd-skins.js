@@ -139,12 +139,125 @@ async function fetchCDAndMatchTiers(wikiChampions) {
 // Kategoride listelenen `<Champion>_<Skin>Skin_HD.jpg` storage'da olmayabilir,
 // asıl HD dosya `<Event><Year>Skin_HD.jpg` formatında. Bu mapping override eder.
 //
-// Yeni bir grup splash keşfedersen buraya ekle (key: champKey+skinKey, value: filename).
+// Key: champKey+skinKey (ikisi de lowercase + non-alphanumeric strip).
+// Value: wiki HD images dizinindeki gerçek dosya adı.
 const FILE_EXCEPTIONS = {
-    // Pool Party 2018 — Gangplank, Caitlyn, Zoe ortak splash
-    "gangplankpoolparty": "PoolParty2018Skin_HD.jpg",
+    // === Pool Party 2018 — Caitlyn, Gangplank, Zoe ===
     "caitlynpoolparty":   "PoolParty2018Skin_HD.jpg",
+    "gangplankpoolparty": "PoolParty2018Skin_HD.jpg",
     "zoepoolparty":       "PoolParty2018Skin_HD.jpg",
+
+    // === Pool Party 2021 — Braum, Heimerdinger, Sett ===
+    "braumpoolparty":        "PoolParty2021Skin_HD.jpg",
+    "heimerdingerpoolparty": "PoolParty2021Skin_HD.jpg",
+    "settpoolparty":         "PoolParty2021Skin_HD.jpg",
+
+    // === Bewitching 2021 — Fiora, Nami, Syndra, Yuumi (Poppy belirsiz) ===
+    "fiorabewitching":  "Bewitching2021Skin_HD.jpg",
+    "namibewitching":   "Bewitching2021Skin_HD.jpg",
+    "syndrabewitching": "Bewitching2021Skin_HD.jpg",
+    "yuumibewitching":  "Bewitching2021Skin_HD.jpg",
+
+    // === Astronaut 2023 — Fizz, Ivern, Kennen, Singed, Xerath ===
+    "fizzastronaut":   "Astronaut2023Skin_HD.jpg",
+    "ivernastronaut":  "Astronaut2023Skin_HD.jpg",
+    "kennenastronaut": "Astronaut2023Skin_HD.jpg",
+    "singedastronaut": "Astronaut2023Skin_HD.jpg",
+    "xerathastronaut": "Astronaut2023Skin_HD.jpg",
+
+    // === Bee 2021 — Yuumi (Yuubee), Malzahar (Beezahar), Kog'Maw (Bee'Maw) ===
+    "yuumiyuubee":      "Bee2021Skin_HD.jpg",
+    "malzaharbeezahar": "Bee2021Skin_HD.jpg",
+    "kogmawbeemaw":     "Bee2021Skin_HD.jpg",
+
+    // === Bee 2022 — Ziggs (BZZ), Heimerdinger (Heimerstinger), Nunu (&Beelump), Orianna (Orbeeanna) ===
+    "ziggsbzzziggs":             "Bee2022Skin_HD.jpg",
+    "heimerdingerheimerstinger": "Bee2022Skin_HD.jpg",
+    "nunununubeelump":           "Bee2022Skin_HD.jpg",
+    "oriannaorbeeanna":          "Bee2022Skin_HD.jpg",
+
+    // === Dragonslayer 2021 — Galio (Dragon Guardian), Kayle, Twitch ===
+    "galiodragonguardian": "Dragonslayer2021Skin_HD.jpg",
+    "kayledragonslayer":   "Dragonslayer2021Skin_HD.jpg",
+    "twitchdragonslayer":  "Dragonslayer2021Skin_HD.jpg",
+
+    // === Infernal 2019 — Akali, Galio ===
+    "akaliinfernal": "Infernal2019Skin_HD.jpg",
+    "galioinfernal": "Infernal2019Skin_HD.jpg",
+
+    // === Infernal 2020 — Karthus, Kennen, Vel'Koz ===
+    "karthusinfernal": "Infernal2020Skin_HD.jpg",
+    "kenneninfernal":  "Infernal2020Skin_HD.jpg",
+    "velkozinfernal":  "Infernal2020Skin_HD.jpg",
+
+    // === Arcade 2015 — Corki, Hecarim, Miss Fortune ===
+    "corkiarcade":       "Arcade2015Skin_HD.jpg",
+    "hecarimarcade":     "Arcade2015Skin_HD.jpg",
+    "missfortunearcade": "Arcade2015Skin_HD.jpg",
+
+    // === FIFA World Cup 2014 — soccer pozisyon temalı skinler ===
+    "alistarsweeper":     "FIFAWorldCup2014Skin_HD.jpg",  // defender
+    "gragassuperfan":     "FIFAWorldCup2014Skin_HD.jpg",  // fan
+    "lucianstriker":      "FIFAWorldCup2014Skin_HD.jpg",  // forward
+    "maokaigoalkeeper":   "FIFAWorldCup2014Skin_HD.jpg",  // goalkeeper
+    "twistedfateredcard": "FIFAWorldCup2014Skin_HD.jpg",  // referee
+
+    // === FIFA World Cup 2018 — Lee Sin Playmaker, Rammus King ===
+    "leesinplaymaker": "FIFAWorldCup2018Skin_HD.jpg",
+    "rammusking":      "FIFAWorldCup2018Skin_HD.jpg",
+
+    // === SKT T1 2013 (1st Worlds) — Jax (Impact), Lee Sin (Bengi), Vayne (Piglet), Zed (Faker), Zyra (PoohManDu) ===
+    "jaxsktt1":    "SKTT12013Skin_HD.jpg",
+    "leesinsktt1": "SKTT12013Skin_HD.jpg",
+    "vaynesktt1":  "SKTT12013Skin_HD.jpg",
+    "zedsktt1":    "SKTT12013Skin_HD.jpg",
+    "zyrasktt1":   "SKTT12013Skin_HD.jpg",
+
+    // === SKT T1 2015 (2nd Worlds) — Alistar (Wolf), Azir (Easyhoon), Elise (Bengi), Kalista (Bang), Renekton (Marin), Ryze (Faker) ===
+    "alistarsktt1":  "SKTT12015Skin_HD.jpg",
+    "azirsktt1":     "SKTT12015Skin_HD.jpg",
+    "elisesktt1":    "SKTT12015Skin_HD.jpg",
+    "kalistasktt1":  "SKTT12015Skin_HD.jpg",
+    "renektonsktt1": "SKTT12015Skin_HD.jpg",
+    "ryzesktt1":     "SKTT12015Skin_HD.jpg",
+
+    // === SKT T1 2016 (3rd Worlds) — Ekko (Duke), Jhin (Bang), Nami (Wolf), Olaf (Bengi), Syndra (Faker), Zac (Blank) ===
+    "ekkosktt1":   "SKTT12016Skin_HD.jpg",
+    "jhinsktt1":   "SKTT12016Skin_HD.jpg",
+    "namisktt1":   "SKTT12016Skin_HD.jpg",
+    "olafsktt1":   "SKTT12016Skin_HD.jpg",
+    "syndrasktt1": "SKTT12016Skin_HD.jpg",
+    "zacsktt1":    "SKTT12016Skin_HD.jpg",
+
+    // === Cats vs Dogs 2023 ===
+    // Cats: Nidalee (Kittalee)
+    "nidaleekittalee": "Cats2023Skin_HD.jpg",
+    // Dogs: Yuumi (Shiba), Kindred (Woof and Lamb), Kled (Kibble-Head)
+    "yuumishiba":         "Dogs2023Skin_HD.jpg",
+    "kindredwoofandlamb": "Dogs2023Skin_HD.jpg",
+    "kledkibblehead":     "Dogs2023Skin_HD.jpg",
+
+    // === RPG 2015 — Braum (Lionheart), Gragas (Caskbreaker), Ryze (Whitebeard), Varus (Swiftbolt) ===
+    "braumbraumlionheart":     "RPG2015Skin_HD.jpg",
+    "gragasgragascaskbreaker": "RPG2015Skin_HD.jpg",
+    "ryzeryzewhitebeard":      "RPG2015Skin_HD.jpg",
+    "varusvarusswiftbolt":     "RPG2015Skin_HD.jpg",
+
+    // === RPG 2016 — Bard (Bard Bard), Jayce (Brighthammer), Karthus (Lightsbane), Sejuani (Dawnchaser) ===
+    "bardbardbard":             "RPG2016Skin_HD.jpg",
+    "jaycejaycebrighthammer":   "RPG2016Skin_HD.jpg",
+    "karthuskarthuslightsbane": "RPG2016Skin_HD.jpg",
+    "sejuanisejuanidawnchaser": "RPG2016Skin_HD.jpg",
+
+    // === RPG 2020 — Talon (Blackwood), Taric (Luminshield), Twitch (Shadowfoot) ===
+    "talontalonblackwood":    "RPG2020Skin_HD.jpg",
+    "tarictaricluminshield":  "RPG2020Skin_HD.jpg",
+    "twitchtwitchshadowfoot": "RPG2020Skin_HD.jpg",
+
+    // NOT EKLENMEMİŞ:
+    // - April Fools 2015/2016/2017: skin key'lerini doğrulamadık (joke skinler)
+    // - Guardian of the Sands 2015/2019: champion listesi belirsiz
+    // - T1 2025: bireysel champion skinleri henüz wiki'de yok (Summer 2026 release)
 };
 
 async function fetchAll() {
