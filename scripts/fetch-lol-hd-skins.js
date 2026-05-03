@@ -79,6 +79,13 @@ function parseFilename(filename) {
     };
 }
 
+// CD'nin internal champion ID'leri ile wiki champion key'leri arasında alias.
+// CD splashPath /Characters/MonkeyKing/... → wiki "Wukong"
+const CHAMP_ALIAS = {
+    monkeyking: "wukong",
+    renata:     "renataglasc",
+};
+
 // Communitydragon'dan tüm skin'leri çek. wiki champions verisini referans alarak
 // her CD skin'i en iyi wiki skin'iyle eşleştir, tier'ı döndür.
 async function fetchCDAndMatchTiers(wikiChampions) {
@@ -96,7 +103,8 @@ async function fetchCDAndMatchTiers(wikiChampions) {
         // Champion: splashPath'ten al (örn /Characters/MasterYi/...)
         const champMatch = cdSkin.splashPath?.match(/\/Characters\/([^/]+)\//);
         if (!champMatch) continue;
-        const champKey = normalize(champMatch[1]);
+        let champKey = normalize(champMatch[1]);
+        champKey = CHAMP_ALIAS[champKey] || champKey;
 
         const wikiChamp = wikiChampions[champKey];
         if (!wikiChamp) continue; // wiki'de bu champion yoksa atla
@@ -110,10 +118,13 @@ async function fetchCDAndMatchTiers(wikiChampions) {
             continue;
         }
 
-        // Non-base: CD name'i normalize ettikten sonra wiki skin'lerinden hangisi
-        // içinde tam olarak geçiyor? En uzun key'i seç (kdaallout > kda gibi).
+        // Non-base: CD name'i normalize ettikten sonra wiki skin key'lerinden
+        // hangisi BAŞINDA geçiyor? (includes değil — yoksa "Prestige PROJECT" CD'si
+        // wiki'deki "project" key'ini overwrite eder.) En uzun key kazanır.
+        // Threshold 2: "t1", "ig", "dj" gibi kısa esports/internal skin key'leri için.
+        // startsWith zaten restrictive, false positive riski düşük.
         const candidates = wikiChamp.skins
-            .filter(s => s.k !== "original" && s.k.length >= 3 && cdNameKey.includes(s.k))
+            .filter(s => s.k !== "original" && s.k.length >= 2 && cdNameKey.startsWith(s.k))
             .sort((a, b) => b.k.length - a.k.length);
 
         if (candidates.length > 0) {
