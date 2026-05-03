@@ -205,10 +205,10 @@ async function fetchAll() {
             const tierInfo = tierCode && TIER_DISPLAY[tierCode];
             if (tierInfo) {
                 skin.t = `${tierInfo.emoji} ${tierInfo.name} · ${tierInfo.rp} RP*`;
-                skin._o = tierInfo.order;
+                skin.o = tierInfo.order;
                 tierMatched++;
             } else {
-                skin._o = 99;
+                skin.o = 99;
                 tierMissing++;
             }
         }
@@ -219,11 +219,9 @@ async function fetchAll() {
         c.skins.sort((a, b) => {
             if (a.n === "Classic") return -1;
             if (b.n === "Classic") return 1;
-            if (a._o !== b._o) return a._o - b._o;
+            if (a.o !== b.o) return a.o - b.o;
             return a.n.localeCompare(b.n);
         });
-        // _o sadece sort için, JSON'a yazma
-        for (const s of c.skins) delete s._o;
     }
 
     const out = {
