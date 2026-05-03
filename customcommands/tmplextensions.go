@@ -805,7 +805,10 @@ func tmplDBTopEntries(ctx *templates.Context, bottom bool) interface{} {
 
 func serializeValue(v interface{}) ([]byte, error) {
 	var b bytes.Buffer
-	enc := msgpack.NewEncoder(templates.LimitWriter(&b, 100000))
+	// Self-host bump: 100KB → 5MB. Büyük cache yapıları (örn. LoL skin lookup
+	// JSON ~245KB) için yeterli, ama keyfi büyüklükten korur. Toplam guild
+	// DB limit'i CheckGuildDBLimit'te ayrıca kontrol ediliyor.
+	enc := msgpack.NewEncoder(templates.LimitWriter(&b, 5000000))
 	err := enc.Encode(v)
 	return b.Bytes(), err
 }
