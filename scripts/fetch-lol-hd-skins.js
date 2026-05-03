@@ -35,7 +35,21 @@ const path = require("path");
 
 const API = "https://wiki.leagueoflegends.com/api.php";
 const CATEGORY = "Category:High_definition_champion_skins";
+const CD_SKINS = "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/skins.json";
 const OUT = path.join(__dirname, "..", "data", "lolHdSkins.json");
+
+// kEpic, kLegendary, kMythic vs. → kullanıcı dostu format + tahmini RP
+// (RP'ler tier'ın tipik fiyatı; legacy/event skin'lerde farklılık olabilir)
+const TIER_DISPLAY = {
+    kEpic:         { emoji: "🟣", name: "Epic",         rp: "~1350" },
+    kLegendary:    { emoji: "🟡", name: "Legendary",    rp: "~1820" },
+    kMythic:       { emoji: "🌸", name: "Mythic",       rp: "ME"     }, // Mythic Essence
+    kUltimate:     { emoji: "🔴", name: "Ultimate",     rp: "~3250" },
+    kRare:         { emoji: "🔵", name: "Rare",         rp: "limited" },
+    kExalted:      { emoji: "💎", name: "Exalted",      rp: "~5400" },
+    kTranscendent: { emoji: "✨", name: "Transcendent", rp: "—"      },
+    kNoRarity:     { emoji: "⚪", name: "Standard",     rp: "~975"  },
+};
 
 const normalize = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
@@ -62,6 +76,51 @@ function parseFilename(filename) {
         champ: m[1].replace(/_/g, " "),
         skin: m[2],
     };
+}
+
+// Communitydragon'dan tüm skin'leri çek. wiki champions verisini referans alarak
+// her CD skin'i en iyi wiki skin'iyle eşleştir, tier'ı döndür.
+async function fetchCDAndMatchTiers(wikiChampions) {
+    process.stdout.write("[CD] skin metadata çekiliyor... ");
+    const res = await fetch(CD_SKINS, {
+        headers: { "User-Agent": "YAGPDB-selfhost-skin-lookup/1.0" },
+    });
+    if (!res.ok) throw new Error(`CD HTTP ${res.status}`);
+    const cdData = await res.json();
+    process.stdout.write(`${Object.keys(cdData).length} skin alındı\n`);
+
+    const tiers = {}; // fullKey → tier code
+
+    for (const cdSkin of Object.values(cdData)) {
+        // Champion: splashPath'ten al (örn /Characters/MasterYi/...)
+        const champMatch = cdSkin.splashPath?.match(/\/Characters\/([^/]+)\//);
+        if (!champMatch) continue;
+        const champKey = normalize(champMatch[1]);
+
+        const wikiChamp = wikiChampions[champKey];
+        if (!wikiChamp) continue; // wiki'de bu champion yoksa atla
+
+        const cdNameKey = normalize(cdSkin.name);
+        const rarity = cdSkin.rarity || "kNoRarity";
+
+        // Base skin → wiki "original"
+        if (cdSkin.isBase) {
+            tiers[champKey + "original"] = rarity;
+            continue;
+        }
+
+        // Non-base: CD name'i normalize ettikten sonra wiki skin'lerinden hangisi
+        // içinde tam olarak geçiyor? En uzun key'i seç (kdaallout > kda gibi).
+        const candidates = wikiChamp.skins
+            .filter(s => s.k !== "original" && s.k.length >= 3 && cdNameKey.includes(s.k))
+            .sort((a, b) => b.k.length - a.k.length);
+
+        if (candidates.length > 0) {
+            tiers[champKey + candidates[0].k] = rarity;
+        }
+    }
+
+    return tiers;
 }
 
 async function fetchAll() {
@@ -103,9 +162,11 @@ async function fetchAll() {
     const members = await fetchAll();
 
     const files = {};
-    const champions = {};   // champKey → { name, skins: [{k, n, f}] }
+    const champions = {};   // champKey → { name, skins: [{k, n, f, t}] }
     let collisions = 0;
     let skipped = 0;
+    let tierMatched = 0;
+    let tierMissing = 0;
 
     for (const m of members) {
         const filename = m.title.replace(/^File:/, "").replace(/ /g, "_");
@@ -126,10 +187,12 @@ async function fetchAll() {
         if (!champions[champKey]) {
             champions[champKey] = { name: info.champ, skins: [] };
         }
+
         champions[champKey].skins.push({
             k: skinKey,
             n: prettifySkinName(info.skin),
             f: filename,
+            t: "", // tier sonra set edilecek
         });
     }
 
@@ -140,6 +203,21 @@ async function fetchAll() {
             if (b.n === "Classic") return 1;
             return a.n.localeCompare(b.n);
         });
+    }
+
+    // Tier bilgisini CD'den çek ve eşleştir
+    const cdTiers = await fetchCDAndMatchTiers(champions);
+    for (const [champKey, champ] of Object.entries(champions)) {
+        for (const skin of champ.skins) {
+            const tierCode = cdTiers[champKey + skin.k];
+            const tierInfo = tierCode && TIER_DISPLAY[tierCode];
+            if (tierInfo) {
+                skin.t = `${tierInfo.emoji} ${tierInfo.name} · ${tierInfo.rp} RP`;
+                tierMatched++;
+            } else {
+                tierMissing++;
+            }
+        }
     }
 
     const out = {
@@ -160,14 +238,19 @@ async function fetchAll() {
     console.log(`\n[skins] ${out.total} skin → ${OUT}`);
     console.log(`[skins] Dosya boyutu: ${sizeKB} KB`);
     console.log(`[skins] Atlanan varyantlar: ${skipped}`);
+    console.log(`[skins] Tier eşleşme: ${tierMatched}/${tierMatched + tierMissing} (${(100*tierMatched/(tierMatched+tierMissing)).toFixed(1)}%)`);
     if (collisions > 0) {
         console.log(`[skins] ⚠ ${collisions} key collision (rare)`);
     }
 
     // Hızlı sanity check
-    console.log(`\n[skins] Örnek lookup'lar:`);
-    for (const k of ["ahrioriginal", "ahrikdaallout", "ksanteoriginal", "missfortunearcade", "leesinacolyte"]) {
-        console.log(`  ${k.padEnd(28)} → ${files[k] || "✗ yok"}`);
+    console.log(`\n[skins] Örnek lookup'lar (tier dahil):`);
+    for (const champKey of ["ahri", "ksante", "missfortune"]) {
+        const c = champions[champKey];
+        if (c) {
+            console.log(`  ${c.name}:`);
+            c.skins.slice(0, 3).forEach(s => console.log(`    ${s.n.padEnd(25)} ${s.t || "(tier yok)"}`));
+        }
     }
 })().catch((err) => {
     console.error("[skins] HATA:", err);
