@@ -76,7 +76,27 @@ func (c *Context) tmplSendDM(s ...interface{}) string {
 		return ""
 	}
 
-	msgSend, err := c.parseMessageInput(s[0])
+	// fork mod: optional "Show Server Info" button. Off by default; pass "serverinfo" as first arg to include it.
+	addServerInfo := false
+	if str, ok := s[0].(string); ok && strings.EqualFold(str, "serverinfo") {
+		addServerInfo = true
+		s = s[1:]
+		if len(s) < 1 {
+			return ""
+		}
+	}
+
+	// fork mod: sendDM <userID> <message> DMs an arbitrary user; sendDM <message> DMs the triggerer
+	targetID := c.MS.User.ID
+	msgArgs := s
+	if len(s) >= 2 {
+		if tid := TargetUserID(s[0]); tid != 0 {
+			targetID = tid
+			msgArgs = s[1:]
+		}
+	}
+
+	msgSend, err := c.parseMessageInput(msgArgs[0])
 	if err != nil {
 		return ""
 	}
@@ -85,14 +105,16 @@ func (c *Context) tmplSendDM(s ...interface{}) string {
 		return ""
 	}
 
-	if msgSend.Content != "" && reflect.TypeOf(s[0]).Kind() != reflect.Ptr && reflect.TypeOf(s[0]).Kind() != reflect.Struct {
-		msgSend.Content = common.ReplaceServerInvites(fmt.Sprint(s...), 0, "[removed-server-invite]")
+	if msgSend.Content != "" && reflect.TypeOf(msgArgs[0]).Kind() != reflect.Ptr && reflect.TypeOf(msgArgs[0]).Kind() != reflect.Struct {
+		msgSend.Content = common.ReplaceServerInvites(fmt.Sprint(msgArgs...), 0, "[removed-server-invite]")
 	}
-	serverInfo := bot.GenerateServerInfoButton(c.GS.ID)
-	if len(msgSend.Components) >= 5 {
-		msgSend.Components = msgSend.Components[:4]
+	if addServerInfo {
+		serverInfo := bot.GenerateServerInfoButton(c.GS.ID)
+		if len(msgSend.Components) >= 5 {
+			msgSend.Components = msgSend.Components[:4]
+		}
+		msgSend.Components = append(serverInfo, msgSend.Components...)
 	}
-	msgSend.Components = append(serverInfo, msgSend.Components...)
 
 	if msgSend.Reference != nil {
 		if msgSend.Reference.Type == discordgo.MessageReferenceTypeForward {
@@ -107,7 +129,7 @@ func (c *Context) tmplSendDM(s ...interface{}) string {
 		}
 	}
 
-	channel, err := common.BotSession.UserChannelCreate(c.MS.User.ID)
+	channel, err := common.BotSession.UserChannelCreate(targetID)
 	if err != nil {
 		return ""
 	}
