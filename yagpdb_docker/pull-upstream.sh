@@ -33,13 +33,26 @@ if [ -n "$DIRTY" ]; then
     exit 1
 fi
 
+# 0b. upstream remote var mi? Yoksa ekle.
+if ! git remote get-url upstream >/dev/null 2>&1; then
+    warn "upstream remote yoktu, ekleniyor (botlabs-gg/yagpdb)."
+    git remote add upstream https://github.com/botlabs-gg/yagpdb.git
+fi
+
+# 0c. Shallow clone ise merge-base bulunamaz; gecmisi ac.
+if [ -f .git/shallow ]; then
+    warn "Shallow clone tespit edildi, tam gecmis cekiliyor (bir kerelik)..."
+    git fetch --unshallow origin || { err "Unshallow basarisiz."; exit 1; }
+fi
+
 # 1. Fetch
-step "1/4" "origin'den fetch ediliyor..."
-git fetch origin || { err "Fetch başarısız."; exit 1; }
+step "1/4" "origin + upstream fetch ediliyor..."
+git fetch origin || { err "origin fetch başarısız."; exit 1; }
+git fetch upstream || { err "upstream fetch başarısız."; exit 1; }
 ok "Fetch tamam."
 
 # 2. Yeni commit var mı?
-NEW=$(git rev-list --count master..origin/master 2>/dev/null || echo 0)
+NEW=$(git rev-list --count master..upstream/master 2>/dev/null || echo 0)
 if [ "$NEW" -eq 0 ]; then
     step "2/4" "Yeni commit yok."
     ok "Upstream zaten güncel. İşin bitti."
@@ -47,10 +60,10 @@ if [ "$NEW" -eq 0 ]; then
 fi
 
 step "2/4" "$NEW yeni commit bulundu:"
-git log --oneline --no-decorate master..origin/master | head -40
+git log --oneline --no-decorate master..upstream/master | head -40
 
 step "3/4" "Etkilenen dosyalar:"
-git diff --stat master..origin/master | tail -20
+git diff --stat master..upstream/master | tail -20
 
 # Senin önemli dosyalarına dokunan upstream commit'leri varsa uyarı
 DANGER_FILES=(
@@ -64,7 +77,7 @@ DANGER_FILES=(
 )
 WILL_CONFLICT=()
 for f in "${DANGER_FILES[@]}"; do
-    if git diff --name-only master..origin/master | grep -qx "$f"; then
+    if git diff --name-only master..upstream/master | grep -qx "$f"; then
         WILL_CONFLICT+=("$f")
     fi
 done
@@ -86,8 +99,8 @@ case "$yn" in
 esac
 
 # 4. Merge
-step "4/4" "Merging origin/master..."
-if git merge origin/master --no-edit; then
+step "4/4" "Merging upstream/master..."
+if git merge upstream/master --no-edit; then
     echo
     ok "Temiz merge — conflict yok."
     echo
@@ -96,7 +109,7 @@ if git merge origin/master --no-edit; then
     echo "  2. Container rebuild:"
     echo "     ${Y}cd yagpdb_docker && docker compose -f docker-compose.dev.yml up -d --build app${N}"
     echo "  3. Discord'da CC'leri test et"
-    echo "  4. Her şey iyiyse push: ${Y}git push personal master${N}"
+    echo "  4. Her şey iyiyse push: ${Y}git push origin master${N}"
 else
     echo
     err "CONFLICT — şu dosyaları manuel çözmen lazım:"
