@@ -71,6 +71,32 @@ func (c *Context) parseMessageInput(msg interface{}) (*discordgo.MessageSend, er
 	return msgSend, nil
 }
 
+// implicitDMTarget resolves who {{ sendDM <message> }} (the form without an explicit
+// target) should DM: the context member when there is one, otherwise the user who invoked
+// the interaction. Returns 0 when the context has neither - an interval CC or a feed
+// template has nobody to answer to.
+//
+// fork mod: added so the implicit form keeps working in member-less contexts such as
+// context menu custom commands, where the invoker only exists on the interaction.
+func (c *Context) implicitDMTarget() int64 {
+	if c.MS != nil {
+		return c.MS.User.ID
+	}
+
+	if c.CurrentFrame == nil || c.CurrentFrame.Interaction == nil || c.CurrentFrame.Interaction.Interaction == nil {
+		return 0
+	}
+
+	// Member is set for guild interactions, User for ones invoked in a DM.
+	if m := c.CurrentFrame.Interaction.Member; m != nil && m.User != nil {
+		return m.User.ID
+	}
+	if u := c.CurrentFrame.Interaction.User; u != nil {
+		return u.ID
+	}
+	return 0
+}
+
 func (c *Context) tmplSendDM(s ...interface{}) string {
 	if len(s) < 1 || c.IncreaseCheckCallCounter("send_dm", 1) || c.IncreaseCheckGenericAPICall() || c.ExecutedFrom == ExecutedFromLeave {
 		return ""
@@ -98,13 +124,12 @@ func (c *Context) tmplSendDM(s ...interface{}) string {
 
 	// fork mod: upstream bails out whenever c.MS is nil, which disables sendDM in every
 	// member-less context (context menu / role trigger / interval CCs, feed templates).
-	// c.MS is only needed for the implicit "DM the triggerer" form, so require it there and
-	// let the explicit-target form through.
+	// c.MS is only needed to resolve the implicit form, and an interaction already carries
+	// its invoker, so fall back to that before giving up.
 	if targetID == 0 {
-		if c.MS == nil {
+		if targetID = c.implicitDMTarget(); targetID == 0 {
 			return ""
 		}
-		targetID = c.MS.User.ID
 	}
 
 	msgSend, err := c.parseMessageInput(msgArgs[0])

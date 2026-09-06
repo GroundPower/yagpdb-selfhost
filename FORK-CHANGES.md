@@ -39,11 +39,19 @@ kullaniyor, yani `c.MS == nil`. Upstream'in `tmplSendDM`'i daha ilk satirda
 `c.MS == nil` ise bosa donuyordu, dolayisiyla bizim acik hedefli surumumuz de
 oralarda sessizce hicbir sey yapmiyordu.
 
-Kisit gevsetildi: `c.MS` artik SADECE ortuk "tetikleyene DM at" formu icin sart.
-Acik hedefli form her yerde calisiyor:
+Kisit kaldirildi. Sozlesme her baglamda ayni:
 
-- `{{ sendDM <userID> <mesaj> }}` -> her baglamda calisir
-- `{{ sendDM <mesaj> }}`          -> hala `c.MS` ister, member'siz baglamda no-op
+- `{{ sendDM <mesaj> }}`          -> komutu CALISTIRAN kisiye DM
+- `{{ sendDM <userID> <mesaj> }}` -> o userID'ye DM
+
+Ortuk form artik `c.MS` yoksa pes etmiyor; `implicitDMTarget()` helper'i sirayla
+`c.MS` -> `Interaction.Member.User` -> `Interaction.User` bakiyor. Context menu CC'sinde
+invoker zaten interaction'da duruyor (handler onu `.Author` olarak da veriyor), o yuzden
+ortuk form orada da dogru kisiye gidiyor.
+
+Gercekten kimsenin olmadigi baglamlarda (interval/scheduled CC, youtube/twitch feed)
+helper 0 donuyor ve ortuk form no-op kaliyor - orada "tetikleyen" diye biri yok.
+Acik hedefli form o baglamlarda da calisiyor.
 
 Etkilenen (member'siz) baglamlar:
 `handle_contextmenu.go`, `handle_role.go` (role trigger), `handle_timed.go`
