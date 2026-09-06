@@ -795,22 +795,18 @@ func (c *Context) tmplHasPermissions(needed int64) (bool, error) {
 		return false, ErrTooManyAPICalls
 	}
 
-	if c.MS == nil {
-		return false, nil
-	}
-
-	if needed < 0 {
-		return false, nil
-	}
-
-	if needed == 0 {
-		return true, nil
-	}
-
-	return c.hasPerms(c.MS, c.CurrentFrame.CS.ID, needed)
+	return c.hasPerms(c.MS, c.CurrentFrame.CS.ID, needed, false)
 }
 
-func (c *Context) tmplTargetHasPermissions(target interface{}, needed int64) (bool, error) {
+func (c *Context) tmplHasAnyPermissions(needed int64) (bool, error) {
+	if c.IncreaseCheckGenericAPICall() {
+		return false, ErrTooManyAPICalls
+	}
+
+	return c.hasPerms(c.MS, c.CurrentFrame.CS.ID, needed, true)
+}
+
+func (c *Context) tmplTargetHasPermissions(target any, needed int64) (bool, error) {
 	if c.IncreaseCheckGenericAPICall() {
 		return false, ErrTooManyAPICalls
 	}
@@ -820,6 +816,37 @@ func (c *Context) tmplTargetHasPermissions(target interface{}, needed int64) (bo
 		return false, nil
 	}
 
+	ms, err := bot.GetMember(c.GS.ID, targetID)
+	if err != nil {
+		return false, err
+	}
+
+	return c.hasPerms(ms, c.CurrentFrame.CS.ID, needed, false)
+}
+
+func (c *Context) tmplTargetHasAnyPermissions(target any, needed int64) (bool, error) {
+	if c.IncreaseCheckGenericAPICall() {
+		return false, ErrTooManyAPICalls
+	}
+
+	targetID := TargetUserID(target)
+	if targetID == 0 {
+		return false, nil
+	}
+
+	ms, err := bot.GetMember(c.GS.ID, targetID)
+	if err != nil {
+		return false, err
+	}
+
+	return c.hasPerms(ms, c.CurrentFrame.CS.ID, needed, true)
+}
+
+func (c *Context) hasPerms(ms *dstate.MemberState, channelID int64, needed int64, requireAny bool) (bool, error) {
+	if ms == nil {
+		return false, nil
+	}
+
 	if needed < 0 {
 		return false, nil
 	}
@@ -828,12 +855,20 @@ func (c *Context) tmplTargetHasPermissions(target interface{}, needed int64) (bo
 		return true, nil
 	}
 
-	ms, err := bot.GetMember(c.GS.ID, targetID)
+	perms, err := c.GS.GetMemberPermissions(channelID, ms.User.ID, ms.Member.Roles)
 	if err != nil {
 		return false, err
 	}
 
-	return c.hasPerms(ms, c.CurrentFrame.CS.ID, needed)
+	if perms&discordgo.PermissionAdministrator != 0 {
+		return true, nil
+	}
+
+	if requireAny {
+		return perms&needed != 0, nil
+	}
+
+	return perms&needed == needed, nil
 }
 
 func (c *Context) tmplGetTargetPermissionsIn(target interface{}, channel interface{}) (int64, error) {
@@ -857,23 +892,6 @@ func (c *Context) tmplGetTargetPermissionsIn(target interface{}, channel interfa
 	}
 
 	return c.GS.GetMemberPermissions(channelID, ms.User.ID, ms.Member.Roles)
-}
-
-func (c *Context) hasPerms(ms *dstate.MemberState, channelID int64, needed int64) (bool, error) {
-	perms, err := c.GS.GetMemberPermissions(channelID, ms.User.ID, ms.Member.Roles)
-	if err != nil {
-		return false, err
-	}
-
-	if perms&needed == needed {
-		return true, nil
-	}
-
-	if perms&discordgo.PermissionAdministrator != 0 {
-		return true, nil
-	}
-
-	return false, nil
 }
 
 func (c *Context) tmplDelResponse(args ...interface{}) string {

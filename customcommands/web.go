@@ -140,7 +140,7 @@ func (p *Plugin) InitWeb() {
 	subMux.Handle(pat.Post("/commands/new"), newCommandHandler)
 	subMux.Handle(pat.Post("/commands/:cmd/update"), web.ControllerPostHandler(handleUpdateCommand, getCmdHandler, CustomCommand{}))
 	subMux.Handle(pat.Post("/commands/:cmd/delete"), web.ControllerPostHandler(handleDeleteCommand, getHandler, nil))
-	subMux.Handle(pat.Post("/commands/:cmd/run_now"), web.ControllerPostHandler(handleRunCommandNow, getCmdHandler, nil))
+	subMux.Handle(pat.Post("/commands/:cmd/run_now"), web.ControllerPostHandler(handleRunCommandNow, getHandler, nil))
 	subMux.Handle(pat.Post("/commands/:cmd/update_and_run"), web.ControllerPostHandler(handleUpdateAndRunNow, getCmdHandler, CustomCommand{}))
 	subMux.Handle(pat.Post("/commands/import/:cmd"), PublicCommandMW(newCommandHandler))
 
@@ -356,6 +356,38 @@ func handleGetCommandsGroup(w http.ResponseWriter, r *http.Request) (web.Templat
 func serveGroupSelected(r *http.Request, templateData web.TemplateData, groupID int64, guildID int64) (web.TemplateData, error) {
 	templateData["GetCCIntervalType"] = tmplGetCCIntervalTriggerType
 	templateData["GetCCInterval"] = tmplGetCCInterval
+	templateData["GetCCSlashOptions"] = tmplGetCCSlashOptions
+	templateData["GetCCSlashDescription"] = tmplGetCCSlashDescription
+	templateData["GetCCSlashUseSubcommands"] = tmplGetCCSlashUseSubcommands
+	templateData["GetCCSlashSubcommands"] = tmplGetCCSlashSubcommands
+
+	// Whether the guild has already reached the free-tier slash command limit, used
+	// to decide when to surface the premium nudge in the slash command editor.
+	slashCount, err := models.CustomCommands(qm.Where("guild_id = ? AND trigger_type = ? AND disabled = false", guildID, int(CommandTriggerSlash))).CountG(r.Context())
+	if err != nil {
+		return templateData, err
+	}
+	templateData["SlashCommandLimitReached"] = slashCount >= MaxSlashCommandCCs
+
+	// Same, for the free-tier per-type context menu command limits.
+	userContextMenuCount, err := models.CustomCommands(qm.Where("guild_id = ? AND trigger_type = ? AND disabled = false", guildID, int(CommandTriggerUserContextMenu))).CountG(r.Context())
+	if err != nil {
+		return templateData, err
+	}
+	templateData["UserContextMenuLimitReached"] = userContextMenuCount >= MaxContextMenuCCs
+
+	messageContextMenuCount, err := models.CustomCommands(qm.Where("guild_id = ? AND trigger_type = ? AND disabled = false", guildID, int(CommandTriggerMessageContextMenu))).CountG(r.Context())
+	if err != nil {
+		return templateData, err
+	}
+	templateData["MessageContextMenuLimitReached"] = messageContextMenuCount >= MaxContextMenuCCs
+
+	// Same, for the free-tier role-change command limit.
+	roleTriggerCount, err := models.CustomCommands(qm.Where("guild_id = ? AND trigger_type = ? AND disabled = false", guildID, int(CommandTriggerRole))).CountG(r.Context())
+	if err != nil {
+		return templateData, err
+	}
+	templateData["RoleTriggerLimitReached"] = roleTriggerCount >= MaxRoleTriggerCommands
 
 	_, ok := templateData["CustomCommands"]
 	if !ok {
@@ -470,6 +502,22 @@ func handleNewCommand(w http.ResponseWriter, r *http.Request) (web.TemplateData,
 		dbModel.TimeTriggerInterval = importCC.TimeTriggerInterval
 		dbModel.TriggerOnEdit = importCC.TriggerOnEdit && premium.ContextPremium(ctx)
 		dbModel.TriggerType = importCC.TriggerType
+		dbModel.RoleTriggerMode = importCC.RoleTriggerMode
+		dbModel.SlashCommandOptions = importCC.SlashCommandOptions
+		if importCC.TriggerType == int(CommandTriggerSlash) {
+			data := parseSlashCommandData(dbModel)
+			if ok, _ := validateSlashCommandData(activeGuild.ID, dbModel.TextTrigger, data, dbModel.LocalID, !dbModel.Disabled); !ok {
+				http.Redirect(w, r, fmt.Sprintf("/manage/%d/customcommands?import_failed=true", activeGuild.ID), http.StatusSeeOther)
+				return templateData, nil
+			}
+		}
+		if IsContextMenuTrigger(CommandTriggerType(importCC.TriggerType)) {
+			if ok, _ := validateContextMenuData(activeGuild.ID, dbModel.TextTrigger, CommandTriggerType(importCC.TriggerType), dbModel.LocalID, !dbModel.Disabled); !ok {
+				http.Redirect(w, r, fmt.Sprintf("/manage/%d/customcommands?import_failed=true", activeGuild.ID), http.StatusSeeOther)
+				return templateData, nil
+			}
+		}
+
 		templateData.AddAlerts(web.WarningAlert("It is recommended you scan your CC for hardcoded IDs or other server-specific arguments you may want to update"))
 	}
 
@@ -746,6 +794,7 @@ func handleRunCommandNow(w http.ResponseWriter, r *http.Request) (web.TemplateDa
 
 	go pubsub.Publish("custom_commands_run_now", activeGuild.ID, cmd)
 
+	templateData.AddAlerts(web.SucessAlert("Ran the command"))
 	return templateData, nil
 }
 
@@ -851,6 +900,7 @@ func handleUpdateGroup(w http.ResponseWriter, r *http.Request) (web.TemplateData
 	_, err = model.UpdateG(ctx, boil.Infer())
 	if err == nil {
 		go cplogs.RetryAddEntry(web.NewLogEntryFromContext(r.Context(), panelLogKeyUpdatedGroup, &cplogs.Param{Type: cplogs.ParamTypeString, Value: model.Name}))
+		templateData.AddAlerts(web.SucessAlert("Saved group settings"))
 	}
 
 	EvictCustomCommandCache(activeGuild.ID)
@@ -905,6 +955,12 @@ func triggerTypeFromForm(str string) CommandTriggerType {
 		return CommandTriggerCron
 	case "role_trigger":
 		return CommandTriggerRole
+	case "slash_command":
+		return CommandTriggerSlash
+	case "user_context_menu":
+		return CommandTriggerUserContextMenu
+	case "message_context_menu":
+		return CommandTriggerMessageContextMenu
 	default:
 		return CommandTriggerCommand
 
@@ -942,6 +998,59 @@ func tmplGetCCInterval(cc *models.CustomCommand) int {
 	return cc.TimeTriggerInterval
 }
 
+// SlashOptionView is a stored slash command option plus its editor type key
+// ("string", "string_menu", ...) for rendering the type dropdown.
+type SlashOptionView struct {
+	SlashCommandOption
+	TypeKey string
+}
+
+// tmplGetCCSlashOptions returns the configured options of a slash command custom
+// command for rendering in the edit form, each tagged with its UI type key.
+func tmplGetCCSlashOptions(cc *models.CustomCommand) []SlashOptionView {
+	stored := parseSlashCommandData(cc).Options
+	views := make([]SlashOptionView, 0, len(stored))
+	for _, o := range stored {
+		views = append(views, SlashOptionView{SlashCommandOption: o, TypeKey: slashFormTypeKey(o)})
+	}
+	return views
+}
+
+// tmplGetCCSlashDescription returns the configured description of a slash command
+// custom command for rendering in the edit form.
+func tmplGetCCSlashDescription(cc *models.CustomCommand) string {
+	return parseSlashCommandData(cc).Description
+}
+
+// SlashSubcommandView is a stored subcommand plus its options tagged with editor
+// type keys, for rendering in the edit form.
+type SlashSubcommandView struct {
+	Name        string
+	Description string
+	Options     []SlashOptionView
+}
+
+// tmplGetCCSlashUseSubcommands reports whether a slash command custom command is
+// configured with subcommands (vs flat top-level options).
+func tmplGetCCSlashUseSubcommands(cc *models.CustomCommand) bool {
+	return len(parseSlashCommandData(cc).Subcommands) > 0
+}
+
+// tmplGetCCSlashSubcommands returns the configured subcommands of a slash command
+// custom command for rendering in the edit form.
+func tmplGetCCSlashSubcommands(cc *models.CustomCommand) []SlashSubcommandView {
+	stored := parseSlashCommandData(cc).Subcommands
+	views := make([]SlashSubcommandView, 0, len(stored))
+	for _, s := range stored {
+		opts := make([]SlashOptionView, 0, len(s.Options))
+		for _, o := range s.Options {
+			opts = append(opts, SlashOptionView{SlashCommandOption: o, TypeKey: slashFormTypeKey(o)})
+		}
+		views = append(views, SlashSubcommandView{Name: s.Name, Description: s.Description, Options: opts})
+	}
+	return views
+}
+
 var _ web.PluginWithServerHomeWidget = (*Plugin)(nil)
 
 func (p *Plugin) LoadServerHomeWidget(w http.ResponseWriter, r *http.Request) (web.TemplateData, error) {
@@ -969,6 +1078,8 @@ func updateTemplateWithCountData(count int, templateData web.TemplateData, ctx c
 	maxCommands := MaxCommandsForContext(ctx)
 	templateData["CCCount"] = count
 	templateData["CCLimit"] = maxCommands
+	templateData["FreeLimit"] = MaxCommands
+	templateData["PremiumLimit"] = MaxCommandsPremium
 
 	additionalMessage := ""
 	if premium.ContextPremiumTier(ctx) != premium.PremiumTierPremium {
@@ -1020,4 +1131,11 @@ func EvictCustomCommandCache(guildID int64) {
 	pubsub.EvictCacheSet(cachedCommandsComponentTrigger, guildID)
 	pubsub.EvictCacheSet(cachedCommandsReactionTrigger, guildID)
 	pubsub.EvictCacheSet(cachedCommandsRoleTrigger, guildID)
+	pubsub.EvictCacheSet(cachedCommandsSlashTrigger, guildID)
+	pubsub.EvictCacheSet(cachedCommandsContextMenuTrigger, guildID)
+
+	// Rebuild the guild's registered slash commands on the owning bot node. This is
+	// a no-op (deduped via a redis hash) when the slash command set is unchanged, so
+	// it's safe to fire on every custom command mutation.
+	pubsub.PublishLogErr(SlashCommandResyncEvent, guildID, nil)
 }

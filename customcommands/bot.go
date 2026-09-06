@@ -72,6 +72,7 @@ func (p *Plugin) BotInit() {
 	eventsystem.AddHandlerAsyncLastLegacy(p, bot.ConcurrentEventHandler(handleGuildAuditLogEntryCreate), eventsystem.EventGuildAuditLogEntryCreate)
 
 	pubsub.AddHandler("custom_commands_run_now", handleCustomCommandsRunNow, models.CustomCommand{})
+	pubsub.AddHandler(SlashCommandResyncEvent, handleResyncGuildSlashCommands, nil)
 	scheduledevents2.RegisterHandler("cc_next_run", NextRunScheduledEvent{}, handleNextRunScheduledEVent)
 	scheduledevents2.RegisterHandler("cc_delayed_run", DelayedRunCCData{}, handleDelayedRunCC)
 }
@@ -100,7 +101,7 @@ var cmdEvalCommand = &commands.YAGCommand{
 	},
 	SlashCommandEnabled: false,
 	DefaultEnabled:      true,
-	RunFunc: func(data *dcmd.Data) (interface{}, error) {
+	RunFunc: func(data *dcmd.Data) (any, error) {
 		hasCoreWriteRole := false
 
 		writeRoles := common.GetCoreServerConfCached(data.GuildData.GS.ID).AllowedWriteRoles
@@ -146,7 +147,9 @@ var cmdEvalCommand = &commands.YAGCommand{
 			return formatCustomCommandRunErr(code, err), err
 		}
 
-		return out, nil
+		msg := ctx.MessageSend(out)
+
+		return msg, nil
 	},
 }
 
@@ -564,6 +567,41 @@ func (p *Plugin) OnRemovedPremiumGuild(GuildID int64) error {
 	if err != nil {
 		return errors.WrapIf(err, "Failed disabling trigger on edits on premium removal")
 	}
+
+	slashCommands, err := models.CustomCommands(qm.Where("guild_id = ? AND disabled = false AND trigger_type = ?", GuildID, CommandTriggerSlash), qm.OrderBy("local_id ASC"), qm.Offset(MaxSlashCommandCCs)).AllG(context.Background())
+	if err != nil {
+		return errors.WrapIf(err, "failed fetching slash command custom commands on premium removal")
+	}
+	if len(slashCommands) > 0 {
+		_, err = slashCommands.UpdateAllG(context.Background(), models.M{"disabled": true})
+		if err != nil {
+			return errors.WrapIf(err, "Failed disabling slash command custom commands on premium removal")
+		}
+	}
+
+	_, err = models.CustomCommands(
+		qm.Where("guild_id = ? AND disabled = false AND trigger_type = ?", GuildID, CommandTriggerSlash),
+		qm.Where("jsonb_typeof(slash_command_options->'subcommands') = 'array'"),
+		qm.Where("jsonb_array_length(slash_command_options->'subcommands') > ?", MaxSlashCommandCCs),
+	).UpdateAllG(context.Background(), models.M{"disabled": true})
+	if err != nil {
+		return errors.WrapIf(err, "failed disabling slash command custom commands exceeding the free subcommand limit on premium removal")
+	}
+
+	for _, t := range []CommandTriggerType{CommandTriggerUserContextMenu, CommandTriggerMessageContextMenu} {
+		contextMenuCommands, err := models.CustomCommands(qm.Where("guild_id = ? AND disabled = false AND trigger_type = ?", GuildID, t), qm.OrderBy("local_id ASC"), qm.Offset(MaxContextMenuCCs)).AllG(context.Background())
+		if err != nil {
+			return errors.WrapIf(err, "failed fetching context menu custom commands on premium removal")
+		}
+		if len(contextMenuCommands) > 0 {
+			_, err = contextMenuCommands.UpdateAllG(context.Background(), models.M{"disabled": true})
+			if err != nil {
+				return errors.WrapIf(err, "failed disabling context menu custom commands on premium removal")
+			}
+		}
+	}
+
+	pubsub.PublishLogErr(SlashCommandResyncEvent, GuildID, nil)
 
 	return nil
 }

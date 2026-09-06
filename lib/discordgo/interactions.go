@@ -114,6 +114,9 @@ type ApplicationCommandOption struct {
 	MinValue *float64 `json:"min_value,omitempty"`
 	// Maximum value of number/integer option.
 	MaxValue float64 `json:"max_value,omitempty"`
+	// Minimum and maximum allowed length for string options.
+	MinLength *int `json:"min_length,omitempty"`
+	MaxLength *int `json:"max_length,omitempty"`
 }
 
 // ApplicationCommandOptionChoice represents a slash command option choice.
@@ -297,9 +300,15 @@ type InteractionData interface {
 
 // ApplicationCommandInteractionData contains the data of application command interaction.
 type ApplicationCommandInteractionData struct {
-	ID       int64                                      `json:"id,string"`
-	Name     string                                     `json:"name"`
-	Resolved *ApplicationCommandInteractionDataResolved `json:"resolved"`
+	ID          int64                                      `json:"id,string"`
+	Name        string                                     `json:"name"`
+	CommandType ApplicationCommandType                     `json:"type"`
+	Resolved    *ApplicationCommandInteractionDataResolved `json:"resolved"`
+
+	// GuildID is the id of the guild the invoked command is registered to. It is only
+	// set for guild-scoped commands and omitted (0) for global commands, so it can be
+	// used to tell whether the interaction is for a guild command or a global one.
+	GuildID int64 `json:"guild_id,string"`
 
 	// Slash command options
 	Options []*ApplicationCommandInteractionDataOption `json:"options"`
@@ -533,6 +542,7 @@ type InteractionResponseData struct {
 	Embeds          []*MessageEmbed     `json:"embeds"`
 	AllowedMentions *AllowedMentions    `json:"allowed_mentions,omitempty"`
 	Flags           MessageFlags        `json:"flags,omitempty"`
+	File            *File               `json:"-"`
 	Files           []*File             `json:"-"`
 
 	// NOTE: autocomplete interaction only.

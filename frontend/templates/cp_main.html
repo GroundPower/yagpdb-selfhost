@@ -73,7 +73,7 @@
     <!-- What are these comments even they are wasted bandwidth, thats what they are -->
     <!-- The current time is 4:14 am on the 21st of may, maybe i just like adding onto this whenever i come across this section after forgetting about it? -->
 </head>
-<body onbeforeunload="return unsavedChangesAlert()">
+<body>
     <div id="loading-overlay">
         <section class="card">
             <header class="card-header">
@@ -103,6 +103,7 @@
         <div id="unsaved-changes-popup-container">
             <p id="unsaved-changes-message" class="mb-0">blablablablabla</p>
             <input id="unsaved-changes-save-button" type="button" class="btn btn-success ml-3" value="Save!" onclick="saveUnsavedChanges()">
+            <input id="unsaved-changes-leave-button" type="button" class="btn btn-secondary ml-2" value="Leave without saving" onclick="leaveWithoutSaving()">
         </p>
     </div>
 
@@ -152,6 +153,26 @@
 
 </html>
 {{end}}{{end}}
+
+{{/*Non-dismissable warning shown until the host opts out of prefix commands*/}}
+{{define "cp_prefix_deprecation_warning"}}
+{{if .ShowPrefixCommandsWarning}}
+<div class="row">
+    <div class="col-lg-12">
+        <div class="alert alert-warning" id="prefix-commands-deprecation">
+            <strong>Prefixed commands are being discontinued.</strong>
+            From <strong>{{.PrefixCommandsShutdownDate}}</strong>, YAGPDB will no longer respond to built-in prefixed commands
+            (the ones starting with <code>{{.CommandPrefix}}</code>).
+            Use discord's <code>/</code> (slash) command interface, or mention the bot, to run them instead:
+            <code>{{.CommandPrefix}}help</code> becomes <code>/help</code> or <code>@YAGPDB help</code>.
+            Custom commands are not affected and will keep working as they do today.
+            This is being done to be in line with Discords message content access policy (permission to bots from discord to read messages) 
+            and to only use the access for features the bot genuinely needs it for ( e.g. moderation and custom commands).
+        </div>
+    </div>
+</div>
+{{end}}
+{{end}}
 
 {{/*Displays alerts*/}}
 {{define "cp_alerts"}}
@@ -210,6 +231,7 @@ $(function(){
     {{end}}
 })
 </script>
+{{template "cp_prefix_deprecation_warning" .}}
 <div id="alerts">
     {{if .Alerts}}
     <div class="row">
@@ -241,3 +263,50 @@ For example, to mention a user, you would do <code><@{{"{{"}}.User.ID{{"}}"}}></
 {{define "template_helper_guild"}}<code>{{"{{"}}.Guild{{"}}"}}<a href="https://help.yagpdb.xyz/docs/reference/templates/syntax-and-data/#guild-server"><code>.Guild</code> object reference.</a></code>{{end}}
 
 {{define "set_roles"}}<script>var activeGuildRoles = JSON.parse('{{json .ActiveGuild.Roles}}');</script>{{end}}
+
+{{/* CodeMirror editor assets for template-editing pages. Include once per page. */}}
+{{define "codemirror_assets"}}
+<link rel="stylesheet" href="/static/vendorr/codemirror/lib/codemirror.css">
+<link rel="stylesheet" href="/static/vendorr/codemirror/theme/ayu-mirage.css">
+<script src="/static/vendorr/codemirror/lib/codemirror.js"></script>
+<script src="/static/vendorr/codemirror/addon/display/placeholder.js"></script>
+<script src="/static/vendorr/codemirror/mode/go/go.js"></script>
+<script src="/static/js/yagFuncs.js"></script>
+<script src="/static/js/codemirror_setup.js?{{.StartedAtUnix}}"></script>
+<style>
+    .CodeMirror {
+        width: 100% !important;
+        resize: vertical;
+    }
+    /* Inside a Bootstrap input-group, grow to fill space so the +/- button stays beside the editor instead of wrapping. */
+    .input-group > .CodeMirror {
+        flex: 1 1 auto;
+        width: 1% !important;
+    }
+</style>
+{{end}}
+
+{{/* Show/hide toggle for CodeMirror editors. Controls every .template-editor on the page. */}}
+{{define "codemirror_toggle"}}
+<span style="float: right">
+    <input type="checkbox" class="toggle-code-mirror" id="toggle-code-mirror" checked>
+    <label for="toggle-code-mirror" class="mb-0">Show CodeMirror Editor</label>
+</span>
+{{end}}
+
+{{define "cp_premium_at_limit_link"}}
+    {{if and (not .IsGuildPremium) (ge .Count .FreeLimit)}}
+    <small class="form-text premium-color">
+        <i class="fas fa-crown mr-1"> </i>You've reached free limit of {{.FreeLimit}} {{.Name}},  <a href="/premium-perks"> Get premium </a> to increase the limit to {{.PremiumLimit}} {{.Name}}
+    </small>
+    {{end}}
+{{end}}
+
+
+{{define "cp_premium_nudge"}}
+    {{if(not .IsGuildPremium)}}
+        <small class="form-text premium-color">
+             <i class="fas fa-crown premium-color mr-1"></i> {{.Title}} <a href="/premium-perks">Upgrade to Premium</a> to unlock.
+        </small>
+    {{end}}
+{{end}}

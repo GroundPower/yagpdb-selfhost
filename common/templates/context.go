@@ -360,8 +360,8 @@ func (c *Context) setupBaseData() {
 		}
 	}
 
+	c.Data["BotUser"] = common.BotUser
 	if c.MS != nil {
-		c.Data["BotUser"] = common.BotUser
 		c.Data["Member"] = c.MS.DgoMember()
 		c.Data["User"] = &c.MS.User
 		c.Data["user"] = c.Data["User"]
@@ -850,7 +850,9 @@ func baseContextFuncs(c *Context) {
 
 	// Permission functions
 	c.addContextFunc("hasPermissions", c.tmplHasPermissions)
+	c.addContextFunc("hasAnyPermissions", c.tmplHasAnyPermissions)
 	c.addContextFunc("targetHasPermissions", c.tmplTargetHasPermissions)
+	c.addContextFunc("targetHasAnyPermissions", c.tmplTargetHasAnyPermissions)
 	c.addContextFunc("getTargetPermissionsIn", c.tmplGetTargetPermissionsIn)
 
 	// Channel functions
