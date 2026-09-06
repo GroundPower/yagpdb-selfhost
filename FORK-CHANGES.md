@@ -33,6 +33,30 @@ Info", CustomID `DM_<guildID>`) butonunu ZORLA ekliyordu. Artık varsayılan KAP
 Bayrak, hedef/userID tespitinden ÖNCE tüketilir. Edge case: tek başına
 `{{ sendDM "serverinfo" }}` -> no-op (mesaj kalmaz).
 
+### sendDM - member'siz baglamlarda da calisiyor  (2026-09-06)
+v2.84.0 merge'i ile gelen context menu CC'leri `templates.NewContext(gs, cs, nil)`
+kullaniyor, yani `c.MS == nil`. Upstream'in `tmplSendDM`'i daha ilk satirda
+`c.MS == nil` ise bosa donuyordu, dolayisiyla bizim acik hedefli surumumuz de
+oralarda sessizce hicbir sey yapmiyordu.
+
+Kisit gevsetildi: `c.MS` artik SADECE ortuk "tetikleyene DM at" formu icin sart.
+Acik hedefli form her yerde calisiyor:
+
+- `{{ sendDM <userID> <mesaj> }}` -> her baglamda calisir
+- `{{ sendDM <mesaj> }}`          -> hala `c.MS` ister, member'siz baglamda no-op
+
+Etkilenen (member'siz) baglamlar:
+`handle_contextmenu.go`, `handle_role.go` (role trigger), `handle_timed.go`
+(interval + scheduled CC), `youtube/bot.go`, `twitch/bot.go`.
+
+Ayrica `addServerInfo` dali `c.GS != nil` ile korundu - `web/validation.go` nil GS ile
+context kurdugu icin panic ihtimaline karsi.
+
+**Upstream'den bilincli ayrilma:** upstream nil member'i context menu CC'lerinin
+rastgele birine DM atmasini ENGELLEMEK icin kullaniyordu (`handle_contextmenu.go`
+yorumuna bak). Biz bu yetkiyi bilerek geri aciyoruz. `pull-upstream.sh` sonrasi
+conflict cikarsa bizimki kalsin.
+
 ---
 
 ## Upstream merge'leri

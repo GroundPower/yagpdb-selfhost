@@ -72,7 +72,7 @@ func (c *Context) parseMessageInput(msg interface{}) (*discordgo.MessageSend, er
 }
 
 func (c *Context) tmplSendDM(s ...interface{}) string {
-	if len(s) < 1 || c.IncreaseCheckCallCounter("send_dm", 1) || c.IncreaseCheckGenericAPICall() || c.MS == nil || c.ExecutedFrom == ExecutedFromLeave {
+	if len(s) < 1 || c.IncreaseCheckCallCounter("send_dm", 1) || c.IncreaseCheckGenericAPICall() || c.ExecutedFrom == ExecutedFromLeave {
 		return ""
 	}
 
@@ -87,13 +87,24 @@ func (c *Context) tmplSendDM(s ...interface{}) string {
 	}
 
 	// fork mod: sendDM <userID> <message> DMs an arbitrary user; sendDM <message> DMs the triggerer
-	targetID := c.MS.User.ID
+	var targetID int64
 	msgArgs := s
 	if len(s) >= 2 {
 		if tid := TargetUserID(s[0]); tid != 0 {
 			targetID = tid
 			msgArgs = s[1:]
 		}
+	}
+
+	// fork mod: upstream bails out whenever c.MS is nil, which disables sendDM in every
+	// member-less context (context menu / role trigger / interval CCs, feed templates).
+	// c.MS is only needed for the implicit "DM the triggerer" form, so require it there and
+	// let the explicit-target form through.
+	if targetID == 0 {
+		if c.MS == nil {
+			return ""
+		}
+		targetID = c.MS.User.ID
 	}
 
 	msgSend, err := c.parseMessageInput(msgArgs[0])
@@ -108,7 +119,7 @@ func (c *Context) tmplSendDM(s ...interface{}) string {
 	if msgSend.Content != "" && reflect.TypeOf(msgArgs[0]).Kind() != reflect.Ptr && reflect.TypeOf(msgArgs[0]).Kind() != reflect.Struct {
 		msgSend.Content = common.ReplaceServerInvites(fmt.Sprint(msgArgs...), 0, "[removed-server-invite]")
 	}
-	if addServerInfo {
+	if addServerInfo && c.GS != nil {
 		serverInfo := bot.GenerateServerInfoButton(c.GS.ID)
 		if len(msgSend.Components) >= 5 {
 			msgSend.Components = msgSend.Components[:4]

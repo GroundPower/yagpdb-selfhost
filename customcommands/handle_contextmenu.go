@@ -115,9 +115,13 @@ func handleContextMenuInteraction(evt *eventsystem.EventData, cs *dstate.Channel
 //	.Message       the clicked message (message commands only)
 //	.CommandType   "user" or "message"
 //
-// A nil member is passed to NewContext so .User/.Member are not exposed and sendDM (which
-// targets the context member) is disabled — a context menu command must not be usable to
-// DM an arbitrary target. This mirrors role trigger commands.
+// A nil member is passed to NewContext so .User/.Member are not exposed. This mirrors
+// role trigger commands.
+//
+// fork mod: upstream additionally relied on that nil member to disable sendDM here. We
+// deliberately allow the explicit-target form ({{ sendDM <userID> <msg> }}) in
+// member-less contexts - see tmplSendDM in common/templates/context_funcs.go. The
+// implicit "DM the triggerer" form still no-ops here, as there is no context member.
 func ExecuteCustomCommandFromContextMenu(cc *models.CustomCommand, gs *dstate.GuildSet, cs *dstate.ChannelState, interaction *templates.CustomCommandInteraction) error {
 	ms := dstate.MemberStateFromMember(interaction.Member)
 	tmplCtx := templates.NewContext(gs, cs, nil)
