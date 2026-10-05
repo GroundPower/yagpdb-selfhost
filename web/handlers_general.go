@@ -514,6 +514,11 @@ func HandleGetManagedGuilds(w http.ResponseWriter, r *http.Request) (TemplateDat
 	}
 
 	templateData["ManagedGuilds"] = managedGuilds
+
+	// Fork: the bot owner also gets the servers they can't manage through Discord
+	if user := ContextUser(ctx); user != nil && common.IsOwner(user.ID) {
+		templateData["OwnerExtraGuilds"] = ownerExtraGuilds(ctx, managedGuilds)
+	}
 	return templateData, nil
 }
 
