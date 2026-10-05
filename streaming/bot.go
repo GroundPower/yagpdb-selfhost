@@ -19,6 +19,7 @@ import (
 	"github.com/botlabs-gg/yagpdb/v2/common/templates"
 	"github.com/botlabs-gg/yagpdb/v2/lib/discordgo"
 	"github.com/botlabs-gg/yagpdb/v2/lib/dstate"
+	"github.com/botlabs-gg/yagpdb/v2/presenceoptout"
 	"github.com/mediocregopher/radix/v3"
 )
 
@@ -241,6 +242,11 @@ func CheckPresenceSparse(client radix.Client, config *Config, p *discordgo.Prese
 		return nil
 	}
 
+	// Users who opted out with the presence command are not processed at all
+	if presenceoptout.IsOptedOut(p.User.ID) {
+		return nil
+	}
+
 	mainActivity := retrieveMainActivity(p)
 	ms, err := bot.GetMember(gs.ID, p.User.ID)
 	if err != nil {
@@ -300,6 +306,10 @@ func retrieveMainActivity(p *discordgo.Presence) *discordgo.Activity {
 
 func CheckPresence(client radix.Client, config *Config, ms *dstate.MemberState, gs *dstate.GuildSet) error {
 	if !config.Enabled {
+		return nil
+	}
+
+	if presenceoptout.IsOptedOut(ms.User.ID) {
 		return nil
 	}
 

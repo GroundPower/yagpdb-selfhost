@@ -20,6 +20,7 @@ import (
 	"github.com/botlabs-gg/yagpdb/v2/lib/discordgo"
 	"github.com/botlabs-gg/yagpdb/v2/lib/dstate"
 	"github.com/botlabs-gg/yagpdb/v2/logs/models"
+	"github.com/botlabs-gg/yagpdb/v2/presenceoptout"
 	"github.com/volatiletech/null/v8"
 	"github.com/volatiletech/sqlboiler/v4/boil"
 )
@@ -153,7 +154,9 @@ var cmdWhois = &commands.YAGCommand{
 
 		var memberStatus string
 		state := [6]string{"Playing", "Streaming", "Listening", "Watching", "Custom", "Competing"}
-		if member.Presence == nil || member.Presence.Game == nil {
+		if presenceoptout.IsOptedOut(member.User.ID) {
+			memberStatus = "Hidden, this user opted out of presence processing."
+		} else if member.Presence == nil || member.Presence.Game == nil {
 			memberStatus = "Has no active status, is invisible/offline or is not in the bot's cache."
 		} else {
 			if member.Presence.Game.Type == 4 {
@@ -458,6 +461,10 @@ func markLoggedMessageAsDeleted(ctx context.Context, mID int64) error {
 func HandlePresenceUpdate(evt *eventsystem.EventData) {
 	pu := evt.PresenceUpdate()
 	gs := evt.GS
+
+	if presenceoptout.IsOptedOut(pu.User.ID) {
+		return
+	}
 
 	ms := bot.State.GetMember(gs.ID, pu.User.ID)
 	if ms == nil || ms.Presence == nil || ms.Member == nil {

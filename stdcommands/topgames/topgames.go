@@ -8,6 +8,7 @@ import (
 	"github.com/botlabs-gg/yagpdb/v2/commands"
 	"github.com/botlabs-gg/yagpdb/v2/lib/dcmd"
 	"github.com/botlabs-gg/yagpdb/v2/lib/dstate"
+	"github.com/botlabs-gg/yagpdb/v2/presenceoptout"
 )
 
 var Command = &commands.YAGCommand{
@@ -92,7 +93,7 @@ func checkGuild(dst map[string]int, gs *dstate.GuildSet) {
 				continue
 			}
 
-			if ms.User.Bot {
+			if ms.User.Bot || presenceoptout.IsOptedOut(ms.User.ID) {
 				continue
 			}
 
